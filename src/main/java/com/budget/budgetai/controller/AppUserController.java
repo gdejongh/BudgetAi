@@ -5,13 +5,14 @@ import com.budget.budgetai.dto.AppUserDTO;
 import com.budget.budgetai.service.AppUserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping(value = "/api/users", produces = MediaType.APPLICATION_JSON_VALUE)
 public class AppUserController {
 
     private final AppUserService appUserService;

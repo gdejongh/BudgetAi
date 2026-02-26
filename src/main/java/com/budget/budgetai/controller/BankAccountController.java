@@ -3,8 +3,11 @@ package com.budget.budgetai.controller;
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.service.BankAccountService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/bank-accounts")
+@RequestMapping(value = "/api/bank-accounts", produces = MediaType.APPLICATION_JSON_VALUE)
 public class BankAccountController {
 
     private final BankAccountService bankAccountService;
@@ -22,6 +25,7 @@ public class BankAccountController {
     }
 
     @PostMapping
+    @Operation(operationId = "createBankAccount")
     public ResponseEntity<BankAccountDTO> create(@Valid @RequestBody BankAccountDTO bankAccountDTO) {
         UUID userId = SecurityUtils.getCurrentUserId();
         bankAccountDTO.setAppUserId(userId);
@@ -30,6 +34,7 @@ public class BankAccountController {
     }
 
     @GetMapping("/{id}")
+    @Operation(operationId = "getBankAccountById")
     public ResponseEntity<BankAccountDTO> getById(@PathVariable UUID id) {
         BankAccountDTO account = bankAccountService.getById(id);
         SecurityUtils.verifyOwnership(account.getAppUserId());
@@ -37,18 +42,18 @@ public class BankAccountController {
     }
 
     @GetMapping
-    public ResponseEntity<List<BankAccountDTO>> getByCurrentUser() {
+    @Operation(operationId = "getBankAccounts", summary = "Get bank accounts for current user, optionally filtered by name")
+    public ResponseEntity<List<BankAccountDTO>> getBankAccounts(
+            @Parameter(description = "Filter by account name") @RequestParam(required = false) String name) {
         UUID userId = SecurityUtils.getCurrentUserId();
+        if (name != null) {
+            return ResponseEntity.ok(bankAccountService.getByAppUserIdAndName(userId, name));
+        }
         return ResponseEntity.ok(bankAccountService.getByAppUserId(userId));
     }
 
-    @GetMapping(params = "name")
-    public ResponseEntity<List<BankAccountDTO>> getByName(@RequestParam String name) {
-        UUID userId = SecurityUtils.getCurrentUserId();
-        return ResponseEntity.ok(bankAccountService.getByAppUserIdAndName(userId, name));
-    }
-
     @PutMapping("/{id}")
+    @Operation(operationId = "updateBankAccount")
     public ResponseEntity<BankAccountDTO> update(@PathVariable UUID id,
             @Valid @RequestBody BankAccountDTO bankAccountDTO) {
         BankAccountDTO existing = bankAccountService.getById(id);
@@ -57,6 +62,7 @@ public class BankAccountController {
     }
 
     @DeleteMapping("/{id}")
+    @Operation(operationId = "deleteBankAccount")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         BankAccountDTO existing = bankAccountService.getById(id);
         SecurityUtils.verifyOwnership(existing.getAppUserId());
