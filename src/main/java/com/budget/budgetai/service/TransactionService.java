@@ -1,20 +1,17 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.TransactionDTO;
-import com.budget.budgetai.model.AppUser;
-import com.budget.budgetai.model.BankAccount;
-import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,6 +33,21 @@ public class TransactionService {
     }
 
     public TransactionDTO create(TransactionDTO transactionDTO) {
+        if (transactionDTO == null) {
+            throw new IllegalArgumentException("TransactionDTO cannot be null");
+        }
+        if (transactionDTO.getAmount() == null) {
+            throw new IllegalArgumentException("Transaction amount cannot be null");
+        }
+        if (transactionDTO.getTransactionDate() == null) {
+            throw new IllegalArgumentException("Transaction date cannot be null");
+        }
+        if (transactionDTO.getAppUserId() == null) {
+            throw new IllegalArgumentException("App user ID cannot be null");
+        }
+        if (transactionDTO.getBankAccountId() == null) {
+            throw new IllegalArgumentException("Bank account ID cannot be null");
+        }
         Transaction transaction = toEntity(transactionDTO);
         Transaction savedTransaction = transactionRepository.save(transaction);
         return toDTO(savedTransaction);
@@ -44,7 +56,7 @@ public class TransactionService {
     public TransactionDTO getById(UUID id) {
         return transactionRepository.findById(id)
                 .map(this::toDTO)
-                .orElse(null);
+                .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
     }
 
     public List<TransactionDTO> getAll() {
@@ -84,35 +96,38 @@ public class TransactionService {
     }
 
     public TransactionDTO update(UUID id, TransactionDTO transactionDTO) {
-        Optional<Transaction> existingTransaction = transactionRepository.findById(id);
-        if (existingTransaction.isPresent()) {
-            Transaction transaction = existingTransaction.get();
-            transaction.setAmount(transactionDTO.getAmount());
-            transaction.setDescription(transactionDTO.getDescription());
-            transaction.setTransactionDate(transactionDTO.getTransactionDate());
-
-            if (transactionDTO.getBankAccountId() != null) {
-                Optional<BankAccount> bankAccount = bankAccountRepository.findById(transactionDTO.getBankAccountId());
-                bankAccount.ifPresent(transaction::setBankAccount);
-            }
-
-            if (transactionDTO.getEnvelopeId() != null) {
-                Optional<Envelope> envelope = envelopeRepository.findById(transactionDTO.getEnvelopeId());
-                envelope.ifPresent(transaction::setEnvelope);
-            }
-
-            Transaction updatedTransaction = transactionRepository.save(transaction);
-            return toDTO(updatedTransaction);
+        if (transactionDTO == null) {
+            throw new IllegalArgumentException("TransactionDTO cannot be null");
         }
-        return null;
+        Transaction transaction = transactionRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
+        transaction.setAmount(transactionDTO.getAmount());
+        transaction.setDescription(transactionDTO.getDescription());
+        transaction.setTransactionDate(transactionDTO.getTransactionDate());
+
+        if (transactionDTO.getBankAccountId() != null) {
+            if (!bankAccountRepository.existsById(transactionDTO.getBankAccountId())) {
+                throw new EntityNotFoundException("BankAccount not found with id: " + transactionDTO.getBankAccountId());
+            }
+            transaction.setBankAccount(bankAccountRepository.getReferenceById(transactionDTO.getBankAccountId()));
+        }
+
+        if (transactionDTO.getEnvelopeId() != null) {
+            if (!envelopeRepository.existsById(transactionDTO.getEnvelopeId())) {
+                throw new EntityNotFoundException("Envelope not found with id: " + transactionDTO.getEnvelopeId());
+            }
+            transaction.setEnvelope(envelopeRepository.getReferenceById(transactionDTO.getEnvelopeId()));
+        }
+
+        Transaction updatedTransaction = transactionRepository.save(transaction);
+        return toDTO(updatedTransaction);
     }
 
-    public boolean delete(UUID id) {
-        if (transactionRepository.existsById(id)) {
-            transactionRepository.deleteById(id);
-            return true;
+    public void delete(UUID id) {
+        if (!transactionRepository.existsById(id)) {
+            throw new EntityNotFoundException("Transaction not found with id: " + id);
         }
-        return false;
+        transactionRepository.deleteById(id);
     }
 
     // Mapper methods
@@ -143,18 +158,24 @@ public class TransactionService {
         transaction.setTransactionDate(transactionDTO.getTransactionDate());
 
         if (transactionDTO.getAppUserId() != null) {
-            Optional<AppUser> appUser = appUserRepository.findById(transactionDTO.getAppUserId());
-            appUser.ifPresent(transaction::setAppUser);
+            if (!appUserRepository.existsById(transactionDTO.getAppUserId())) {
+                throw new EntityNotFoundException("AppUser not found with id: " + transactionDTO.getAppUserId());
+            }
+            transaction.setAppUser(appUserRepository.getReferenceById(transactionDTO.getAppUserId()));
         }
 
         if (transactionDTO.getBankAccountId() != null) {
-            Optional<BankAccount> bankAccount = bankAccountRepository.findById(transactionDTO.getBankAccountId());
-            bankAccount.ifPresent(transaction::setBankAccount);
+            if (!bankAccountRepository.existsById(transactionDTO.getBankAccountId())) {
+                throw new EntityNotFoundException("BankAccount not found with id: " + transactionDTO.getBankAccountId());
+            }
+            transaction.setBankAccount(bankAccountRepository.getReferenceById(transactionDTO.getBankAccountId()));
         }
 
         if (transactionDTO.getEnvelopeId() != null) {
-            Optional<Envelope> envelope = envelopeRepository.findById(transactionDTO.getEnvelopeId());
-            envelope.ifPresent(transaction::setEnvelope);
+            if (!envelopeRepository.existsById(transactionDTO.getEnvelopeId())) {
+                throw new EntityNotFoundException("Envelope not found with id: " + transactionDTO.getEnvelopeId());
+            }
+            transaction.setEnvelope(envelopeRepository.getReferenceById(transactionDTO.getEnvelopeId()));
         }
 
         return transaction;

@@ -1,0 +1,244 @@
+package com.budget.budgetai.service;
+
+import com.budget.budgetai.dto.BankAccountDTO;
+import com.budget.budgetai.model.AppUser;
+import com.budget.budgetai.model.BankAccount;
+import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.BankAccountRepository;
+import jakarta.persistence.EntityNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.time.ZonedDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class BankAccountServiceTest {
+
+    @Mock
+    private BankAccountRepository bankAccountRepository;
+
+    @Mock
+    private AppUserRepository appUserRepository;
+
+    @InjectMocks
+    private BankAccountService bankAccountService;
+
+    private UUID accountId;
+    private UUID userId;
+    private AppUser appUser;
+    private BankAccount bankAccount;
+    private BankAccountDTO bankAccountDTO;
+
+    @BeforeEach
+    void setUp() {
+        accountId = UUID.randomUUID();
+        userId = UUID.randomUUID();
+
+        appUser = new AppUser();
+        appUser.setId(userId);
+        appUser.setEmail("test@example.com");
+
+        bankAccount = new BankAccount();
+        bankAccount.setId(accountId);
+        bankAccount.setAppUser(appUser);
+        bankAccount.setName("Checking");
+        bankAccount.setCurrentBalance(new BigDecimal("1000.00"));
+        bankAccount.setCreatedAt(ZonedDateTime.now());
+
+        bankAccountDTO = new BankAccountDTO(null, userId, "Checking", new BigDecimal("1000.00"), null);
+    }
+
+    // --- create ---
+
+    @Test
+    void create_happyPath_returnsSavedDTO() {
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(bankAccount);
+
+        BankAccountDTO result = bankAccountService.create(bankAccountDTO);
+
+        assertNotNull(result);
+        assertEquals(accountId, result.getId());
+        assertEquals("Checking", result.getName());
+        assertEquals(new BigDecimal("1000.00"), result.getCurrentBalance());
+        assertEquals(userId, result.getAppUserId());
+    }
+
+    @Test
+    void create_nonExistentUser_throwsEntityNotFoundException() {
+        when(appUserRepository.existsById(userId)).thenReturn(false);
+
+        assertThrows(EntityNotFoundException.class, () -> bankAccountService.create(bankAccountDTO));
+    }
+
+    @Test
+    void create_nullDTO_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class, () -> bankAccountService.create(null));
+    }
+
+    @Test
+    void create_nullName_throwsIllegalArgumentException() {
+        bankAccountDTO.setName(null);
+        assertThrows(IllegalArgumentException.class, () -> bankAccountService.create(bankAccountDTO));
+    }
+
+    @Test
+    void create_nullBalance_throwsIllegalArgumentException() {
+        bankAccountDTO.setCurrentBalance(null);
+        assertThrows(IllegalArgumentException.class, () -> bankAccountService.create(bankAccountDTO));
+    }
+
+    @Test
+    void create_nullAppUserId_throwsIllegalArgumentException() {
+        bankAccountDTO.setAppUserId(null);
+        assertThrows(IllegalArgumentException.class, () -> bankAccountService.create(bankAccountDTO));
+    }
+
+    // --- getById ---
+
+    @Test
+    void getById_found_returnsDTO() {
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+
+        BankAccountDTO result = bankAccountService.getById(accountId);
+
+        assertNotNull(result);
+        assertEquals(accountId, result.getId());
+        assertEquals("Checking", result.getName());
+    }
+
+    @Test
+    void getById_notFound_throwsEntityNotFoundException() {
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class, () -> bankAccountService.getById(accountId));
+    }
+
+    // --- getAll ---
+
+    @Test
+    void getAll_returnsAll() {
+        when(bankAccountRepository.findAll()).thenReturn(List.of(bankAccount));
+
+        List<BankAccountDTO> result = bankAccountService.getAll();
+
+        assertEquals(1, result.size());
+        assertEquals("Checking", result.get(0).getName());
+    }
+
+    @Test
+    void getAll_empty_returnsEmptyList() {
+        when(bankAccountRepository.findAll()).thenReturn(Collections.emptyList());
+
+        List<BankAccountDTO> result = bankAccountService.getAll();
+
+        assertTrue(result.isEmpty());
+    }
+
+    // --- getByAppUserId ---
+
+    @Test
+    void getByAppUserId_withResults_returnsDTOs() {
+        when(bankAccountRepository.findByAppUserId(userId)).thenReturn(List.of(bankAccount));
+
+        List<BankAccountDTO> result = bankAccountService.getByAppUserId(userId);
+
+        assertEquals(1, result.size());
+        assertEquals(userId, result.get(0).getAppUserId());
+    }
+
+    @Test
+    void getByAppUserId_empty_returnsEmptyList() {
+        when(bankAccountRepository.findByAppUserId(userId)).thenReturn(Collections.emptyList());
+
+        List<BankAccountDTO> result = bankAccountService.getByAppUserId(userId);
+
+        assertTrue(result.isEmpty());
+    }
+
+    // --- getByAppUserIdAndName ---
+
+    @Test
+    void getByAppUserIdAndName_withResults_returnsDTOs() {
+        when(bankAccountRepository.findByAppUserIdAndName(userId, "Checking")).thenReturn(List.of(bankAccount));
+
+        List<BankAccountDTO> result = bankAccountService.getByAppUserIdAndName(userId, "Checking");
+
+        assertEquals(1, result.size());
+        assertEquals("Checking", result.get(0).getName());
+    }
+
+    @Test
+    void getByAppUserIdAndName_empty_returnsEmptyList() {
+        when(bankAccountRepository.findByAppUserIdAndName(userId, "NonExistent")).thenReturn(Collections.emptyList());
+
+        List<BankAccountDTO> result = bankAccountService.getByAppUserIdAndName(userId, "NonExistent");
+
+        assertTrue(result.isEmpty());
+    }
+
+    // --- update ---
+
+    @Test
+    void update_existing_updatesNameAndBalance() {
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", new BigDecimal("5000.00"), null);
+        BankAccount updatedAccount = new BankAccount();
+        updatedAccount.setId(accountId);
+        updatedAccount.setAppUser(appUser);
+        updatedAccount.setName("Savings");
+        updatedAccount.setCurrentBalance(new BigDecimal("5000.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(updatedAccount);
+
+        BankAccountDTO result = bankAccountService.update(accountId, updateDTO);
+
+        assertNotNull(result);
+        assertEquals("Savings", result.getName());
+        assertEquals(new BigDecimal("5000.00"), result.getCurrentBalance());
+    }
+
+    @Test
+    void update_nonExisting_throwsEntityNotFoundException() {
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class, () -> bankAccountService.update(accountId, bankAccountDTO));
+    }
+
+    @Test
+    void update_nullDTO_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class, () -> bankAccountService.update(accountId, null));
+    }
+
+    // --- delete ---
+
+    @Test
+    void delete_existing_deletesSuccessfully() {
+        when(bankAccountRepository.existsById(accountId)).thenReturn(true);
+
+        bankAccountService.delete(accountId);
+
+        verify(bankAccountRepository).deleteById(accountId);
+    }
+
+    @Test
+    void delete_nonExisting_throwsEntityNotFoundException() {
+        when(bankAccountRepository.existsById(accountId)).thenReturn(false);
+
+        assertThrows(EntityNotFoundException.class, () -> bankAccountService.delete(accountId));
+    }
+}

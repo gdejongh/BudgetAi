@@ -1,6 +1,7 @@
 package com.budget.budgetai.repository;
 
 import com.budget.budgetai.model.BankAccount;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -10,7 +11,9 @@ import java.util.UUID;
 @Repository
 public interface BankAccountRepository extends JpaRepository<BankAccount, UUID> {
 
+    @EntityGraph(attributePaths = {"appUser"})
     List<BankAccount> findByAppUserId(UUID appUserId);
 
+    @EntityGraph(attributePaths = {"appUser"})
     List<BankAccount> findByAppUserIdAndName(UUID appUserId, String name);
 }
