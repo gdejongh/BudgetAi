@@ -1,6 +1,7 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.EnvelopeDTO;
+import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
@@ -8,6 +9,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -64,6 +66,14 @@ public class EnvelopeService {
         return envelopeRepository.findByAppUserIdAndName(appUserId, name).stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    public void updateBalance(UUID id, BigDecimal balance) {
+        Envelope e = envelopeRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+        BigDecimal updatedBalance = e.getAllocatedBalance().add(balance);
+        e.setAllocatedBalance(updatedBalance);
+        envelopeRepository.save(e);
     }
 
     public EnvelopeDTO update(UUID id, EnvelopeDTO envelopeDTO) {

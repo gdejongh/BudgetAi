@@ -8,6 +8,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -76,6 +77,14 @@ public class BankAccountService {
         bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
         BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
         return toDTO(updatedAccount);
+    }
+
+    public void updateBalance(UUID id, BigDecimal balance) {
+        BankAccount b = bankAccountRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+        BigDecimal updatedBalance = b.getCurrentBalance().add(balance);
+        b.setCurrentBalance(updatedBalance);
+        bankAccountRepository.save(b);
     }
 
     public void delete(UUID id) {
