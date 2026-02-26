@@ -10,6 +10,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -110,23 +111,62 @@ public class TransactionService {
         }
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
-        transaction.setAmount(transactionDTO.getAmount());
-        transaction.setDescription(transactionDTO.getDescription());
-        transaction.setTransactionDate(transactionDTO.getTransactionDate());
 
+        BigDecimal oldAmount = transaction.getAmount();
+        BigDecimal newAmount = transactionDTO.getAmount();
+        BigDecimal amountDifference = newAmount.subtract(oldAmount);
+
+        // Reverse old amount from old bank account and apply new amount to new/same bank account
         if (transactionDTO.getBankAccountId() != null) {
             if (!bankAccountRepository.existsById(transactionDTO.getBankAccountId())) {
                 throw new EntityNotFoundException("BankAccount not found with id: " + transactionDTO.getBankAccountId());
             }
+            if (!transaction.getBankAccount().getId().equals(transactionDTO.getBankAccountId())) {
+                // Bank account changed: reverse full amount from old, apply full amount to new
+                bankAccountService.updateBalance(transaction.getBankAccount().getId(), oldAmount.negate());
+                bankAccountService.updateBalance(transactionDTO.getBankAccountId(), newAmount);
+            } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
+                // Same bank account, just apply the difference
+                bankAccountService.updateBalance(transaction.getBankAccount().getId(), amountDifference);
+            }
             transaction.setBankAccount(bankAccountRepository.getReferenceById(transactionDTO.getBankAccountId()));
+        } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
+            bankAccountService.updateBalance(transaction.getBankAccount().getId(), amountDifference);
         }
 
-        if (transactionDTO.getEnvelopeId() != null) {
-            if (!envelopeRepository.existsById(transactionDTO.getEnvelopeId())) {
-                throw new EntityNotFoundException("Envelope not found with id: " + transactionDTO.getEnvelopeId());
+        // Reverse old amount from old envelope and apply new amount to new/same envelope
+        UUID oldEnvelopeId = transaction.getEnvelope() != null ? transaction.getEnvelope().getId() : null;
+        UUID newEnvelopeId = transactionDTO.getEnvelopeId();
+
+        if (oldEnvelopeId != null && newEnvelopeId == null) {
+            // Envelope removed: reverse full amount from old envelope
+            envelopeService.updateBalance(oldEnvelopeId, oldAmount.negate());
+            transaction.setEnvelope(null);
+        } else if (oldEnvelopeId == null && newEnvelopeId != null) {
+            // Envelope added: apply full amount to new envelope
+            if (!envelopeRepository.existsById(newEnvelopeId)) {
+                throw new EntityNotFoundException("Envelope not found with id: " + newEnvelopeId);
             }
-            transaction.setEnvelope(envelopeRepository.getReferenceById(transactionDTO.getEnvelopeId()));
+            envelopeService.updateBalance(newEnvelopeId, newAmount);
+            transaction.setEnvelope(envelopeRepository.getReferenceById(newEnvelopeId));
+        } else if (oldEnvelopeId != null) {
+            if (!envelopeRepository.existsById(newEnvelopeId)) {
+                throw new EntityNotFoundException("Envelope not found with id: " + newEnvelopeId);
+            }
+            if (!oldEnvelopeId.equals(newEnvelopeId)) {
+                // Envelope changed: reverse full amount from old, apply full amount to new
+                envelopeService.updateBalance(oldEnvelopeId, oldAmount.negate());
+                envelopeService.updateBalance(newEnvelopeId, newAmount);
+            } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
+                // Same envelope, just apply the difference
+                envelopeService.updateBalance(oldEnvelopeId, amountDifference);
+            }
+            transaction.setEnvelope(envelopeRepository.getReferenceById(newEnvelopeId));
         }
+
+        transaction.setAmount(newAmount);
+        transaction.setDescription(transactionDTO.getDescription());
+        transaction.setTransactionDate(transactionDTO.getTransactionDate());
 
         Transaction updatedTransaction = transactionRepository.save(transaction);
         return toDTO(updatedTransaction);

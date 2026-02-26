@@ -369,6 +369,194 @@ class TransactionServiceTest {
 
     // --- update ---
 
+// Add these tests to the // --- update --- section in TransactionServiceTest.java
+
+    @Test
+    void update_sameAmountSameBankAccount_noBalanceUpdate() {
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
+                new BigDecimal("50.00"), "Same amount", LocalDate.of(2026, 2, 25), null);
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction);
+
+        transactionService.update(transactionId, updateDTO);
+
+        verify(bankAccountService, never()).updateBalance(any(), any());
+        verify(envelopeService, never()).updateBalance(any(), any());
+    }
+
+    @Test
+    void update_differentAmountSameBankAccount_appliesDifferenceToBalance() {
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
+                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(bankAccount);
+        updatedTx.setEnvelope(envelope);
+        updatedTx.setAmount(new BigDecimal("75.00"));
+        updatedTx.setDescription("Updated");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        // difference = 75 - 50 = 25
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("25.00"));
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("25.00"));
+    }
+
+    @Test
+    void update_differentBankAccount_reversesOldAndAppliesNewFullAmount() {
+        UUID newBankAccountId = UUID.randomUUID();
+        BankAccount newBankAccount = new BankAccount();
+        newBankAccount.setId(newBankAccountId);
+
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, newBankAccountId, envelopeId,
+                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(newBankAccount);
+        updatedTx.setEnvelope(envelope);
+        updatedTx.setAmount(new BigDecimal("75.00"));
+        updatedTx.setDescription("Updated");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(newBankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(newBankAccountId)).thenReturn(newBankAccount);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("-50.00"));
+        verify(bankAccountService).updateBalance(newBankAccountId, new BigDecimal("75.00"));
+    }
+
+    @Test
+    void update_envelopeRemoved_reversesOldEnvelopeBalance() {
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, null,
+                new BigDecimal("50.00"), "No envelope", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(bankAccount);
+        updatedTx.setEnvelope(null);
+        updatedTx.setAmount(new BigDecimal("50.00"));
+        updatedTx.setDescription("No envelope");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
+    }
+
+    @Test
+    void update_envelopeAdded_appliesNewAmountToNewEnvelope() {
+        transaction.setEnvelope(null);
+
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
+                new BigDecimal("50.00"), "With envelope", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(bankAccount);
+        updatedTx.setEnvelope(envelope);
+        updatedTx.setAmount(new BigDecimal("50.00"));
+        updatedTx.setDescription("With envelope");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("50.00"));
+    }
+
+    @Test
+    void update_differentEnvelope_reversesOldAndAppliesNewFullAmount() {
+        UUID newEnvelopeId = UUID.randomUUID();
+        Envelope newEnvelope = new Envelope();
+        newEnvelope.setId(newEnvelopeId);
+
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, newEnvelopeId,
+                new BigDecimal("75.00"), "Changed envelope", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(bankAccount);
+        updatedTx.setEnvelope(newEnvelope);
+        updatedTx.setAmount(new BigDecimal("75.00"));
+        updatedTx.setDescription("Changed envelope");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(envelopeRepository.existsById(newEnvelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(newEnvelopeId)).thenReturn(newEnvelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
+        verify(envelopeService).updateBalance(newEnvelopeId, new BigDecimal("75.00"));
+    }
+
+    @Test
+    void update_noBankAccountIdInDTO_appliesDifferenceToExistingBankAccount() {
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, null, envelopeId,
+                new BigDecimal("80.00"), "No bank account id", LocalDate.of(2026, 2, 25), null);
+
+        Transaction updatedTx = new Transaction();
+        updatedTx.setId(transactionId);
+        updatedTx.setAppUser(appUser);
+        updatedTx.setBankAccount(bankAccount);
+        updatedTx.setEnvelope(envelope);
+        updatedTx.setAmount(new BigDecimal("80.00"));
+        updatedTx.setDescription("No bank account id");
+        updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
+
+        transactionService.update(transactionId, updateDTO);
+
+        // difference = 80 - 50 = 30
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("30.00"));
+    }
+
+
     @Test
     void update_existingTransaction_updatesFields() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
