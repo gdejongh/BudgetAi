@@ -1,6 +1,7 @@
 package com.budget.budgetai.controller;
 
 import com.budget.budgetai.config.SecurityUtils;
+import com.budget.budgetai.dto.CreateEnvelopeRequest;
 import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.service.EnvelopeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,9 +27,12 @@ public class EnvelopeController {
 
     @PostMapping
     @Operation(operationId = "createEnvelope")
-    public ResponseEntity<EnvelopeDTO> create(@Valid @RequestBody EnvelopeDTO envelopeDTO) {
+    public ResponseEntity<EnvelopeDTO> create(@Valid @RequestBody CreateEnvelopeRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
+        EnvelopeDTO envelopeDTO = new EnvelopeDTO();
         envelopeDTO.setAppUserId(userId);
+        envelopeDTO.setName(request.getName());
+        envelopeDTO.setAllocatedBalance(request.getAllocatedBalance());
         EnvelopeDTO created = envelopeService.create(envelopeDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

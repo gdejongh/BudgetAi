@@ -2,6 +2,7 @@ package com.budget.budgetai.controller;
 
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.BankAccountDTO;
+import com.budget.budgetai.dto.CreateBankAccountRequest;
 import com.budget.budgetai.service.BankAccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,9 +27,12 @@ public class BankAccountController {
 
     @PostMapping
     @Operation(operationId = "createBankAccount")
-    public ResponseEntity<BankAccountDTO> create(@Valid @RequestBody BankAccountDTO bankAccountDTO) {
+    public ResponseEntity<BankAccountDTO> create(@Valid @RequestBody CreateBankAccountRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
+        BankAccountDTO bankAccountDTO = new BankAccountDTO();
         bankAccountDTO.setAppUserId(userId);
+        bankAccountDTO.setName(request.getName());
+        bankAccountDTO.setCurrentBalance(request.getCurrentBalance());
         BankAccountDTO created = bankAccountService.create(bankAccountDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
