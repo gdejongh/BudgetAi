@@ -11,7 +11,6 @@ public class TransactionDTO {
 
     private UUID id;
 
-    @NotNull(message = "App user ID is required")
     private UUID appUserId;
 
     @NotNull(message = "Bank account ID is required")
@@ -33,7 +32,7 @@ public class TransactionDTO {
     }
 
     public TransactionDTO(UUID id, UUID appUserId, UUID bankAccountId, UUID envelopeId, BigDecimal amount,
-                          String description, LocalDate transactionDate, ZonedDateTime createdAt) {
+            String description, LocalDate transactionDate, ZonedDateTime createdAt) {
         this.id = id;
         this.appUserId = appUserId;
         this.bankAccountId = bankAccountId;
