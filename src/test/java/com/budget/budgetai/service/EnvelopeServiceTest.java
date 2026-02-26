@@ -247,4 +247,37 @@ class EnvelopeServiceTest {
 
         assertThrows(EntityNotFoundException.class, () -> envelopeService.delete(envelopeId));
     }
+
+    @Test
+    void updateBalance_existingEnvelope_updatesBalance() {
+        UUID envelopeId = UUID.randomUUID();
+        EnvelopeRepository repo = mock(EnvelopeRepository.class);
+        AppUserRepository userRepo = mock(AppUserRepository.class);
+        EnvelopeService service = new EnvelopeService(repo, userRepo);
+
+        Envelope envelope = new Envelope();
+        envelope.setId(envelopeId);
+        envelope.setAllocatedBalance(new BigDecimal("100.00"));
+
+        when(repo.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(repo.save(any(Envelope.class))).thenReturn(envelope);
+
+        service.updateBalance(envelopeId, new BigDecimal("50.00"));
+
+        assertEquals(new BigDecimal("150.00"), envelope.getAllocatedBalance());
+        verify(repo).save(envelope);
+    }
+
+    @Test
+    void updateBalance_nonExistingEnvelope_throwsException() {
+        UUID envelopeId = UUID.randomUUID();
+        EnvelopeRepository repo = mock(EnvelopeRepository.class);
+        AppUserRepository userRepo = mock(AppUserRepository.class);
+        EnvelopeService service = new EnvelopeService(repo, userRepo);
+
+        when(repo.findById(envelopeId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class, () ->
+                service.updateBalance(envelopeId, new BigDecimal("10.00")));
+    }
 }

@@ -241,4 +241,37 @@ class BankAccountServiceTest {
 
         assertThrows(EntityNotFoundException.class, () -> bankAccountService.delete(accountId));
     }
+
+    @Test
+    void updateBalance_existingAccount_updatesBalance() {
+        UUID accountId = UUID.randomUUID();
+        BankAccountRepository repo = mock(BankAccountRepository.class);
+        AppUserRepository userRepo = mock(AppUserRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo);
+
+        BankAccount account = new BankAccount();
+        account.setId(accountId);
+        account.setCurrentBalance(new BigDecimal("100.00"));
+
+        when(repo.findById(accountId)).thenReturn(Optional.of(account));
+        when(repo.save(any(BankAccount.class))).thenReturn(account);
+
+        service.updateBalance(accountId, new BigDecimal("50.00"));
+
+        assertEquals(new BigDecimal("150.00"), account.getCurrentBalance());
+        verify(repo).save(account);
+    }
+
+    @Test
+    void updateBalance_nonExistingAccount_throwsException() {
+        UUID accountId = UUID.randomUUID();
+        BankAccountRepository repo = mock(BankAccountRepository.class);
+        AppUserRepository userRepo = mock(AppUserRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo);
+
+        when(repo.findById(accountId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class, () ->
+                service.updateBalance(accountId, new BigDecimal("10.00")));
+    }
 }

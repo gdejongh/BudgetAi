@@ -23,13 +23,18 @@ public class TransactionService {
     private final AppUserRepository appUserRepository;
     private final BankAccountRepository bankAccountRepository;
     private final EnvelopeRepository envelopeRepository;
+    private final BankAccountService bankAccountService;
+    private final EnvelopeService envelopeService;
 
     public TransactionService(TransactionRepository transactionRepository, AppUserRepository appUserRepository,
-                              BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository) {
+                              BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository,
+                              BankAccountService bankAccountService, EnvelopeService envelopeService) {
         this.transactionRepository = transactionRepository;
         this.appUserRepository = appUserRepository;
         this.bankAccountRepository = bankAccountRepository;
         this.envelopeRepository = envelopeRepository;
+        this.bankAccountService = bankAccountService;
+        this.envelopeService = envelopeService;
     }
 
     public TransactionDTO create(TransactionDTO transactionDTO) {
@@ -49,6 +54,10 @@ public class TransactionService {
             throw new IllegalArgumentException("Bank account ID cannot be null");
         }
         Transaction transaction = toEntity(transactionDTO);
+        bankAccountService.updateBalance(transaction.getBankAccount().getId(), transaction.getAmount());
+        if (transaction.getEnvelope() != null) {
+            envelopeService.updateBalance(transaction.getEnvelope().getId(), transaction.getAmount());
+        }
         Transaction savedTransaction = transactionRepository.save(transaction);
         return toDTO(savedTransaction);
     }

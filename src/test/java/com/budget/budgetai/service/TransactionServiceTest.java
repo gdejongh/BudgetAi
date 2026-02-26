@@ -44,6 +44,12 @@ class TransactionServiceTest {
     @Mock
     private EnvelopeRepository envelopeRepository;
 
+    @Mock
+    private BankAccountService bankAccountService;
+
+    @Mock
+    private EnvelopeService envelopeService;
+
     @InjectMocks
     private TransactionService transactionService;
 
@@ -105,6 +111,9 @@ class TransactionServiceTest {
         when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
         when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+        doNothing().when(envelopeService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
 
         TransactionDTO result = transactionService.create(transactionDTO);
 
@@ -115,6 +124,8 @@ class TransactionServiceTest {
         assertEquals(userId, result.getAppUserId());
         assertEquals(bankAccountId, result.getBankAccountId());
         assertEquals(envelopeId, result.getEnvelopeId());
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("50.00"));
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("50.00"));
     }
 
     @Test
@@ -134,6 +145,7 @@ class TransactionServiceTest {
         when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
         when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(txNoEnvelope);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
 
         TransactionDTO result = transactionService.create(transactionDTO);
 
