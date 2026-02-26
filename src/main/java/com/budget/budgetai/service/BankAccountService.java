@@ -1,15 +1,14 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.BankAccountDTO;
-import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -26,6 +25,18 @@ public class BankAccountService {
     }
 
     public BankAccountDTO create(BankAccountDTO bankAccountDTO) {
+        if (bankAccountDTO == null) {
+            throw new IllegalArgumentException("BankAccountDTO cannot be null");
+        }
+        if (bankAccountDTO.getName() == null || bankAccountDTO.getName().isBlank()) {
+            throw new IllegalArgumentException("Bank account name cannot be null or empty");
+        }
+        if (bankAccountDTO.getCurrentBalance() == null) {
+            throw new IllegalArgumentException("Current balance cannot be null");
+        }
+        if (bankAccountDTO.getAppUserId() == null) {
+            throw new IllegalArgumentException("App user ID cannot be null");
+        }
         BankAccount bankAccount = toEntity(bankAccountDTO);
         BankAccount savedAccount = bankAccountRepository.save(bankAccount);
         return toDTO(savedAccount);
@@ -34,7 +45,7 @@ public class BankAccountService {
     public BankAccountDTO getById(UUID id) {
         return bankAccountRepository.findById(id)
                 .map(this::toDTO)
-                .orElse(null);
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
     }
 
     public List<BankAccountDTO> getAll() {
@@ -56,23 +67,22 @@ public class BankAccountService {
     }
 
     public BankAccountDTO update(UUID id, BankAccountDTO bankAccountDTO) {
-        Optional<BankAccount> existingAccount = bankAccountRepository.findById(id);
-        if (existingAccount.isPresent()) {
-            BankAccount bankAccount = existingAccount.get();
-            bankAccount.setName(bankAccountDTO.getName());
-            bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
-            BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
-            return toDTO(updatedAccount);
+        if (bankAccountDTO == null) {
+            throw new IllegalArgumentException("BankAccountDTO cannot be null");
         }
-        return null;
+        BankAccount bankAccount = bankAccountRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+        bankAccount.setName(bankAccountDTO.getName());
+        bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
+        BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
+        return toDTO(updatedAccount);
     }
 
-    public boolean delete(UUID id) {
-        if (bankAccountRepository.existsById(id)) {
-            bankAccountRepository.deleteById(id);
-            return true;
+    public void delete(UUID id) {
+        if (!bankAccountRepository.existsById(id)) {
+            throw new EntityNotFoundException("BankAccount not found with id: " + id);
         }
-        return false;
+        bankAccountRepository.deleteById(id);
     }
 
     // Mapper methods
@@ -99,8 +109,10 @@ public class BankAccountService {
         bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
 
         if (bankAccountDTO.getAppUserId() != null) {
-            Optional<AppUser> appUser = appUserRepository.findById(bankAccountDTO.getAppUserId());
-            appUser.ifPresent(bankAccount::setAppUser);
+            if (!appUserRepository.existsById(bankAccountDTO.getAppUserId())) {
+                throw new EntityNotFoundException("AppUser not found with id: " + bankAccountDTO.getAppUserId());
+            }
+            bankAccount.setAppUser(appUserRepository.getReferenceById(bankAccountDTO.getAppUserId()));
         }
 
         return bankAccount;

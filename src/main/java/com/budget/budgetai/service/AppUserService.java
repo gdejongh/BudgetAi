@@ -3,11 +3,12 @@ package com.budget.budgetai.service;
 import com.budget.budgetai.dto.AppUserDTO;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.repository.AppUserRepository;
+import jakarta.persistence.EntityNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -16,12 +17,23 @@ import java.util.stream.Collectors;
 public class AppUserService {
 
     private final AppUserRepository appUserRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AppUserService(AppUserRepository appUserRepository) {
+    public AppUserService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder) {
         this.appUserRepository = appUserRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public AppUserDTO create(AppUserDTO appUserDTO) {
+        if (appUserDTO == null) {
+            throw new IllegalArgumentException("AppUserDTO cannot be null");
+        }
+        if (appUserDTO.getEmail() == null || appUserDTO.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email cannot be null or empty");
+        }
+        if (appUserDTO.getPassword() == null || appUserDTO.getPassword().isBlank()) {
+            throw new IllegalArgumentException("Password cannot be null or empty");
+        }
         AppUser appUser = toEntity(appUserDTO);
         AppUser savedUser = appUserRepository.save(appUser);
         return toDTO(savedUser);
@@ -30,13 +42,13 @@ public class AppUserService {
     public AppUserDTO getById(UUID id) {
         return appUserRepository.findById(id)
                 .map(this::toDTO)
-                .orElse(null);
+                .orElseThrow(() -> new EntityNotFoundException("AppUser not found with id: " + id));
     }
 
     public AppUserDTO getByEmail(String email) {
         return appUserRepository.findByEmail(email)
                 .map(this::toDTO)
-                .orElse(null);
+                .orElseThrow(() -> new EntityNotFoundException("AppUser not found with email: " + email));
     }
 
     public List<AppUserDTO> getAll() {
@@ -46,22 +58,21 @@ public class AppUserService {
     }
 
     public AppUserDTO update(UUID id, AppUserDTO appUserDTO) {
-        Optional<AppUser> existingUser = appUserRepository.findById(id);
-        if (existingUser.isPresent()) {
-            AppUser appUser = existingUser.get();
-            appUser.setEmail(appUserDTO.getEmail());
-            AppUser updatedUser = appUserRepository.save(appUser);
-            return toDTO(updatedUser);
+        if (appUserDTO == null) {
+            throw new IllegalArgumentException("AppUserDTO cannot be null");
         }
-        return null;
+        AppUser appUser = appUserRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("AppUser not found with id: " + id));
+        appUser.setEmail(appUserDTO.getEmail());
+        AppUser updatedUser = appUserRepository.save(appUser);
+        return toDTO(updatedUser);
     }
 
-    public boolean delete(UUID id) {
-        if (appUserRepository.existsById(id)) {
-            appUserRepository.deleteById(id);
-            return true;
+    public void delete(UUID id) {
+        if (!appUserRepository.existsById(id)) {
+            throw new EntityNotFoundException("AppUser not found with id: " + id);
         }
-        return false;
+        appUserRepository.deleteById(id);
     }
 
     // Mapper methods
@@ -79,6 +90,7 @@ public class AppUserService {
         AppUser appUser = new AppUser();
         appUser.setId(appUserDTO.getId());
         appUser.setEmail(appUserDTO.getEmail());
+        appUser.setPasswordHash(passwordEncoder.encode(appUserDTO.getPassword()));
         return appUser;
     }
 }

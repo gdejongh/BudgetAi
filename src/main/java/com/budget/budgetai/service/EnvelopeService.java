@@ -1,15 +1,14 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.EnvelopeDTO;
-import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -26,6 +25,18 @@ public class EnvelopeService {
     }
 
     public EnvelopeDTO create(EnvelopeDTO envelopeDTO) {
+        if (envelopeDTO == null) {
+            throw new IllegalArgumentException("EnvelopeDTO cannot be null");
+        }
+        if (envelopeDTO.getName() == null || envelopeDTO.getName().isBlank()) {
+            throw new IllegalArgumentException("Envelope name cannot be null or empty");
+        }
+        if (envelopeDTO.getAllocatedBalance() == null) {
+            throw new IllegalArgumentException("Allocated balance cannot be null");
+        }
+        if (envelopeDTO.getAppUserId() == null) {
+            throw new IllegalArgumentException("App user ID cannot be null");
+        }
         Envelope envelope = toEntity(envelopeDTO);
         Envelope savedEnvelope = envelopeRepository.save(envelope);
         return toDTO(savedEnvelope);
@@ -34,7 +45,7 @@ public class EnvelopeService {
     public EnvelopeDTO getById(UUID id) {
         return envelopeRepository.findById(id)
                 .map(this::toDTO)
-                .orElse(null);
+                .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
     }
 
     public List<EnvelopeDTO> getAll() {
@@ -56,23 +67,22 @@ public class EnvelopeService {
     }
 
     public EnvelopeDTO update(UUID id, EnvelopeDTO envelopeDTO) {
-        Optional<Envelope> existingEnvelope = envelopeRepository.findById(id);
-        if (existingEnvelope.isPresent()) {
-            Envelope envelope = existingEnvelope.get();
-            envelope.setName(envelopeDTO.getName());
-            envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
-            Envelope updatedEnvelope = envelopeRepository.save(envelope);
-            return toDTO(updatedEnvelope);
+        if (envelopeDTO == null) {
+            throw new IllegalArgumentException("EnvelopeDTO cannot be null");
         }
-        return null;
+        Envelope envelope = envelopeRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
+        envelope.setName(envelopeDTO.getName());
+        envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
+        Envelope updatedEnvelope = envelopeRepository.save(envelope);
+        return toDTO(updatedEnvelope);
     }
 
-    public boolean delete(UUID id) {
-        if (envelopeRepository.existsById(id)) {
-            envelopeRepository.deleteById(id);
-            return true;
+    public void delete(UUID id) {
+        if (!envelopeRepository.existsById(id)) {
+            throw new EntityNotFoundException("Envelope not found with id: " + id);
         }
-        return false;
+        envelopeRepository.deleteById(id);
     }
 
     // Mapper methods
@@ -99,8 +109,10 @@ public class EnvelopeService {
         envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
 
         if (envelopeDTO.getAppUserId() != null) {
-            Optional<AppUser> appUser = appUserRepository.findById(envelopeDTO.getAppUserId());
-            appUser.ifPresent(envelope::setAppUser);
+            if (!appUserRepository.existsById(envelopeDTO.getAppUserId())) {
+                throw new EntityNotFoundException("AppUser not found with id: " + envelopeDTO.getAppUserId());
+            }
+            envelope.setAppUser(appUserRepository.getReferenceById(envelopeDTO.getAppUserId()));
         }
 
         return envelope;

@@ -1,5 +1,7 @@
 package com.budget.budgetai.dto;
 
+import jakarta.validation.constraints.NotNull;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -8,12 +10,23 @@ import java.util.UUID;
 public class TransactionDTO {
 
     private UUID id;
+
+    @NotNull(message = "App user ID is required")
     private UUID appUserId;
+
+    @NotNull(message = "Bank account ID is required")
     private UUID bankAccountId;
+
     private UUID envelopeId;
+
+    @NotNull(message = "Amount is required")
     private BigDecimal amount;
+
     private String description;
+
+    @NotNull(message = "Transaction date is required")
     private LocalDate transactionDate;
+
     private ZonedDateTime createdAt;
 
     public TransactionDTO() {
