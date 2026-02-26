@@ -1,12 +1,16 @@
 package com.budget.budgetai.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "envelope")
+@Getter
+@Setter
 public class Envelope {
 
     @Id

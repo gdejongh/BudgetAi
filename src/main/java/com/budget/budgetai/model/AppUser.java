@@ -1,12 +1,16 @@
 package com.budget.budgetai.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Entity
 @Table(name = "app_user")
+@Getter
+@Setter
 public class AppUser {
 
     @Id

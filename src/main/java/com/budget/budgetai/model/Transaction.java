@@ -1,9 +1,8 @@
-package com.budgetai.model;
+package com.budget.budgetai.model;
 
-import com.budget.budgetai.model.AppUser;
-import com.budget.budgetai.model.BankAccount;
-import com.budget.budgetai.model.Envelope;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -11,6 +10,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "transaction")
+@Getter
+@Setter
 public class Transaction {
 
     @Id
