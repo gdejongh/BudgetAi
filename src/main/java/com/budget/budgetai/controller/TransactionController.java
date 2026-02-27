@@ -3,6 +3,7 @@ package com.budget.budgetai.controller;
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.TransactionDTO;
 import com.budget.budgetai.service.TransactionService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,6 +25,7 @@ public class TransactionController {
     }
 
     @PostMapping
+    @Operation(operationId = "createTransaction")
     public ResponseEntity<TransactionDTO> create(@Valid @RequestBody TransactionDTO transactionDTO) {
         UUID userId = SecurityUtils.getCurrentUserId();
         transactionDTO.setAppUserId(userId);
@@ -32,6 +34,7 @@ public class TransactionController {
     }
 
     @GetMapping("/{id}")
+    @Operation(operationId = "getTransactionById")
     public ResponseEntity<TransactionDTO> getById(@PathVariable UUID id) {
         TransactionDTO transaction = transactionService.getById(id);
         SecurityUtils.verifyOwnership(transaction.getAppUserId());
@@ -39,28 +42,31 @@ public class TransactionController {
     }
 
     @GetMapping
+    @Operation(operationId = "getAllTransactions", summary = "Get all transactions for the current user")
     public ResponseEntity<List<TransactionDTO>> getByCurrentUser() {
         UUID userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(transactionService.getByAppUserId(userId));
     }
 
-    @GetMapping(params = "bankAccountId")
-    public ResponseEntity<List<TransactionDTO>> getByBankAccountId(@RequestParam UUID bankAccountId) {
+    @GetMapping("/by-account/{bankAccountId}")
+    @Operation(operationId = "getTransactionsByBankAccount")
+    public ResponseEntity<List<TransactionDTO>> getByBankAccountId(@PathVariable UUID bankAccountId) {
         UUID userId = SecurityUtils.getCurrentUserId();
-        // Verify the bank account belongs to the user by checking returned transactions
         List<TransactionDTO> transactions = transactionService.getByBankAccountId(bankAccountId);
         transactions.forEach(t -> SecurityUtils.verifyOwnership(t.getAppUserId()));
         return ResponseEntity.ok(transactions);
     }
 
-    @GetMapping(params = "envelopeId")
-    public ResponseEntity<List<TransactionDTO>> getByEnvelopeId(@RequestParam UUID envelopeId) {
+    @GetMapping("/by-envelope/{envelopeId}")
+    @Operation(operationId = "getTransactionsByEnvelope")
+    public ResponseEntity<List<TransactionDTO>> getByEnvelopeId(@PathVariable UUID envelopeId) {
         List<TransactionDTO> transactions = transactionService.getByEnvelopeId(envelopeId);
         transactions.forEach(t -> SecurityUtils.verifyOwnership(t.getAppUserId()));
         return ResponseEntity.ok(transactions);
     }
 
-    @GetMapping(params = { "startDate", "endDate" })
+    @GetMapping("/by-date-range")
+    @Operation(operationId = "getTransactionsByDateRange")
     public ResponseEntity<List<TransactionDTO>> getByDateRange(@RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         UUID userId = SecurityUtils.getCurrentUserId();
@@ -69,6 +75,7 @@ public class TransactionController {
     }
 
     @PutMapping("/{id}")
+    @Operation(operationId = "updateTransaction")
     public ResponseEntity<TransactionDTO> update(@PathVariable UUID id,
             @Valid @RequestBody TransactionDTO transactionDTO) {
         TransactionDTO existing = transactionService.getById(id);
@@ -79,6 +86,7 @@ public class TransactionController {
     }
 
     @DeleteMapping("/{id}")
+    @Operation(operationId = "deleteTransaction")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         TransactionDTO existing = transactionService.getById(id);
         SecurityUtils.verifyOwnership(existing.getAppUserId());
