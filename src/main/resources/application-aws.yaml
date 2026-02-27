@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    # These will be populated by AWS Elastic Beanstalk environment properties
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    # Tells Flyway to create a baseline if the database isn't completely empty
+    # (helpful if your cloud provider creates default schemas)
+    baseline-on-migrate: true
+
+  jpa:
+    hibernate:
+      # Keep this as validate. Flyway builds the database, Hibernate checks it matches your Entities.
+      ddl-auto: validate
+    show-sql: false
