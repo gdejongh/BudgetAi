@@ -3,8 +3,10 @@ package com.budget.budgetai.service;
 import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
+import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +35,9 @@ class BankAccountServiceTest {
 
     @Mock
     private AppUserRepository appUserRepository;
+
+    @Mock
+    private TransactionRepository transactionRepository;
 
     @InjectMocks
     private BankAccountService bankAccountService;
@@ -76,6 +82,39 @@ class BankAccountServiceTest {
         assertEquals("Checking", result.getName());
         assertEquals(new BigDecimal("1000.00"), result.getCurrentBalance());
         assertEquals(userId, result.getAppUserId());
+    }
+
+    @Test
+    void create_nonZeroBalance_createsInitialBalanceTransaction() {
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(bankAccount);
+
+        bankAccountService.create(bankAccountDTO);
+
+        verify(transactionRepository).save(argThat(txn -> txn.getAmount().compareTo(new BigDecimal("1000.00")) == 0
+                && "Initial Balance".equals(txn.getDescription())
+                && txn.getBankAccount().getId().equals(accountId)
+                && txn.getAppUser().getId().equals(userId)
+                && txn.getEnvelope() == null));
+    }
+
+    @Test
+    void create_zeroBalance_doesNotCreateTransaction() {
+        BankAccountDTO zeroDTO = new BankAccountDTO(null, userId, "Checking", BigDecimal.ZERO, null);
+        BankAccount zeroAccount = new BankAccount();
+        zeroAccount.setId(accountId);
+        zeroAccount.setAppUser(appUser);
+        zeroAccount.setName("Checking");
+        zeroAccount.setCurrentBalance(BigDecimal.ZERO);
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(zeroAccount);
+
+        bankAccountService.create(zeroDTO);
+
+        verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
     @Test
@@ -213,6 +252,44 @@ class BankAccountServiceTest {
     }
 
     @Test
+    void update_balanceChanged_createsAdjustmentTransaction() {
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Checking", new BigDecimal("800.00"), null);
+        BankAccount updatedAccount = new BankAccount();
+        updatedAccount.setId(accountId);
+        updatedAccount.setAppUser(appUser);
+        updatedAccount.setName("Checking");
+        updatedAccount.setCurrentBalance(new BigDecimal("800.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(updatedAccount);
+
+        bankAccountService.update(accountId, updateDTO);
+
+        // Balance went from 1000 to 800, so difference is -200
+        verify(transactionRepository).save(argThat(txn -> txn.getAmount().compareTo(new BigDecimal("-200.00")) == 0
+                && "Adjustment".equals(txn.getDescription())
+                && txn.getBankAccount().getId().equals(accountId)
+                && txn.getEnvelope() == null));
+    }
+
+    @Test
+    void update_sameBalance_doesNotCreateTransaction() {
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", new BigDecimal("1000.00"), null);
+        BankAccount updatedAccount = new BankAccount();
+        updatedAccount.setId(accountId);
+        updatedAccount.setAppUser(appUser);
+        updatedAccount.setName("Savings");
+        updatedAccount.setCurrentBalance(new BigDecimal("1000.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(updatedAccount);
+
+        bankAccountService.update(accountId, updateDTO);
+
+        verify(transactionRepository, never()).save(any(Transaction.class));
+    }
+
+    @Test
     void update_nonExisting_throwsEntityNotFoundException() {
         when(bankAccountRepository.findById(accountId)).thenReturn(Optional.empty());
 
@@ -247,7 +324,8 @@ class BankAccountServiceTest {
         UUID accountId = UUID.randomUUID();
         BankAccountRepository repo = mock(BankAccountRepository.class);
         AppUserRepository userRepo = mock(AppUserRepository.class);
-        BankAccountService service = new BankAccountService(repo, userRepo);
+        TransactionRepository txnRepo = mock(TransactionRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo);
 
         BankAccount account = new BankAccount();
         account.setId(accountId);
@@ -267,11 +345,11 @@ class BankAccountServiceTest {
         UUID accountId = UUID.randomUUID();
         BankAccountRepository repo = mock(BankAccountRepository.class);
         AppUserRepository userRepo = mock(AppUserRepository.class);
-        BankAccountService service = new BankAccountService(repo, userRepo);
+        TransactionRepository txnRepo = mock(TransactionRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo);
 
         when(repo.findById(accountId)).thenReturn(Optional.empty());
 
-        assertThrows(EntityNotFoundException.class, () ->
-                service.updateBalance(accountId, new BigDecimal("10.00")));
+        assertThrows(EntityNotFoundException.class, () -> service.updateBalance(accountId, new BigDecimal("10.00")));
     }
 }

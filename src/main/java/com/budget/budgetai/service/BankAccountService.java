@@ -2,13 +2,16 @@ package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.model.BankAccount;
+import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -19,10 +22,13 @@ public class BankAccountService {
 
     private final BankAccountRepository bankAccountRepository;
     private final AppUserRepository appUserRepository;
+    private final TransactionRepository transactionRepository;
 
-    public BankAccountService(BankAccountRepository bankAccountRepository, AppUserRepository appUserRepository) {
+    public BankAccountService(BankAccountRepository bankAccountRepository, AppUserRepository appUserRepository,
+            TransactionRepository transactionRepository) {
         this.bankAccountRepository = bankAccountRepository;
         this.appUserRepository = appUserRepository;
+        this.transactionRepository = transactionRepository;
     }
 
     public BankAccountDTO create(BankAccountDTO bankAccountDTO) {
@@ -40,6 +46,11 @@ public class BankAccountService {
         }
         BankAccount bankAccount = toEntity(bankAccountDTO);
         BankAccount savedAccount = bankAccountRepository.save(bankAccount);
+
+        if (savedAccount.getCurrentBalance().compareTo(BigDecimal.ZERO) != 0) {
+            createAuditTransaction(savedAccount, savedAccount.getCurrentBalance(), "Initial Balance");
+        }
+
         return toDTO(savedAccount);
     }
 
@@ -73,9 +84,18 @@ public class BankAccountService {
         }
         BankAccount bankAccount = bankAccountRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+
+        BigDecimal oldBalance = bankAccount.getCurrentBalance();
+
         bankAccount.setName(bankAccountDTO.getName());
         bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
         BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
+
+        BigDecimal difference = bankAccountDTO.getCurrentBalance().subtract(oldBalance);
+        if (difference.compareTo(BigDecimal.ZERO) != 0) {
+            createAuditTransaction(updatedAccount, difference, "Adjustment");
+        }
+
         return toDTO(updatedAccount);
     }
 
@@ -94,6 +114,16 @@ public class BankAccountService {
         bankAccountRepository.deleteById(id);
     }
 
+    private void createAuditTransaction(BankAccount bankAccount, BigDecimal amount, String description) {
+        Transaction transaction = new Transaction();
+        transaction.setAppUser(bankAccount.getAppUser());
+        transaction.setBankAccount(bankAccount);
+        transaction.setAmount(amount);
+        transaction.setDescription(description);
+        transaction.setTransactionDate(LocalDate.now());
+        transactionRepository.save(transaction);
+    }
+
     // Mapper methods
     private BankAccountDTO toDTO(BankAccount bankAccount) {
         if (bankAccount == null) {
@@ -104,8 +134,7 @@ public class BankAccountService {
                 bankAccount.getAppUser().getId(),
                 bankAccount.getName(),
                 bankAccount.getCurrentBalance(),
-                bankAccount.getCreatedAt()
-        );
+                bankAccount.getCreatedAt());
     }
 
     private BankAccount toEntity(BankAccountDTO bankAccountDTO) {
