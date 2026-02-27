@@ -377,10 +377,6 @@ class TransactionServiceTest {
                 new BigDecimal("50.00"), "Same amount", LocalDate.of(2026, 2, 25), null);
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
-        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction);
 
         transactionService.update(transactionId, updateDTO);
@@ -404,10 +400,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
-        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
 
         transactionService.update(transactionId, updateDTO);
@@ -438,8 +430,6 @@ class TransactionServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(bankAccountRepository.existsById(newBankAccountId)).thenReturn(true);
         when(bankAccountRepository.getReferenceById(newBankAccountId)).thenReturn(newBankAccount);
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
-        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
 
         transactionService.update(transactionId, updateDTO);
@@ -463,8 +453,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
 
         transactionService.update(transactionId, updateDTO);
@@ -489,8 +477,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
         when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
         when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
@@ -519,8 +505,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
         when(envelopeRepository.existsById(newEnvelopeId)).thenReturn(true);
         when(envelopeRepository.getReferenceById(newEnvelopeId)).thenReturn(newEnvelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
@@ -546,8 +530,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
-        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
 
         transactionService.update(transactionId, updateDTO);
@@ -572,10 +554,6 @@ class TransactionServiceTest {
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(bankAccountRepository.existsById(bankAccountId)).thenReturn(true);
-        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
-        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(updatedTx);
 
         TransactionDTO result = transactionService.update(transactionId, updateDTO);
@@ -658,16 +636,19 @@ class TransactionServiceTest {
 
     @Test
     void delete_existing_deletesSuccessfully() {
-        when(transactionRepository.existsById(transactionId)).thenReturn(true);
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
 
         transactionService.delete(transactionId);
 
-        verify(transactionRepository).deleteById(transactionId);
+        verify(transactionRepository).delete(transaction);
+        // Bonus: we can now verify that deleting a transaction correctly reverses its balances!
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("-50.00"));
+        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
     }
 
     @Test
     void delete_nonExisting_throwsEntityNotFoundException() {
-        when(transactionRepository.existsById(transactionId)).thenReturn(false);
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> transactionService.delete(transactionId));
     }
