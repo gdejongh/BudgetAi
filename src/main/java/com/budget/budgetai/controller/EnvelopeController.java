@@ -34,6 +34,7 @@ public class EnvelopeController {
         UUID userId = SecurityUtils.getCurrentUserId();
         EnvelopeDTO envelopeDTO = new EnvelopeDTO();
         envelopeDTO.setAppUserId(userId);
+        envelopeDTO.setEnvelopeCategoryId(request.getEnvelopeCategoryId());
         envelopeDTO.setName(request.getName());
         envelopeDTO.setAllocatedBalance(request.getAllocatedBalance());
         EnvelopeDTO created = envelopeService.create(envelopeDTO);

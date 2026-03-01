@@ -32,6 +32,9 @@ class AppUserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private EnvelopeCategoryService envelopeCategoryService;
+
     @InjectMocks
     private AppUserService appUserService;
 

@@ -4,6 +4,7 @@ import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -21,12 +22,15 @@ public class EnvelopeService {
 
     private final EnvelopeRepository envelopeRepository;
     private final AppUserRepository appUserRepository;
+    private final EnvelopeCategoryRepository envelopeCategoryRepository;
     private final TransactionRepository transactionRepository;
 
     public EnvelopeService(EnvelopeRepository envelopeRepository, AppUserRepository appUserRepository,
+            EnvelopeCategoryRepository envelopeCategoryRepository,
             TransactionRepository transactionRepository) {
         this.envelopeRepository = envelopeRepository;
         this.appUserRepository = appUserRepository;
+        this.envelopeCategoryRepository = envelopeCategoryRepository;
         this.transactionRepository = transactionRepository;
     }
 
@@ -42,6 +46,9 @@ public class EnvelopeService {
         }
         if (envelopeDTO.getAppUserId() == null) {
             throw new IllegalArgumentException("App user ID cannot be null");
+        }
+        if (envelopeDTO.getEnvelopeCategoryId() == null) {
+            throw new IllegalArgumentException("Envelope category ID cannot be null");
         }
         Envelope envelope = toEntity(envelopeDTO);
         Envelope savedEnvelope = envelopeRepository.save(envelope);
@@ -108,6 +115,14 @@ public class EnvelopeService {
                 .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
         envelope.setName(envelopeDTO.getName());
         envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
+        if (envelopeDTO.getEnvelopeCategoryId() != null) {
+            if (!envelopeCategoryRepository.existsById(envelopeDTO.getEnvelopeCategoryId())) {
+                throw new EntityNotFoundException(
+                        "EnvelopeCategory not found with id: " + envelopeDTO.getEnvelopeCategoryId());
+            }
+            envelope.setEnvelopeCategory(
+                    envelopeCategoryRepository.getReferenceById(envelopeDTO.getEnvelopeCategoryId()));
+        }
         Envelope updatedEnvelope = envelopeRepository.save(envelope);
         return toDTO(updatedEnvelope);
     }
@@ -127,6 +142,7 @@ public class EnvelopeService {
         return new EnvelopeDTO(
                 envelope.getId(),
                 envelope.getAppUser().getId(),
+                envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
                 envelope.getName(),
                 envelope.getAllocatedBalance(),
                 envelope.getCreatedAt());
@@ -146,6 +162,15 @@ public class EnvelopeService {
                 throw new EntityNotFoundException("AppUser not found with id: " + envelopeDTO.getAppUserId());
             }
             envelope.setAppUser(appUserRepository.getReferenceById(envelopeDTO.getAppUserId()));
+        }
+
+        if (envelopeDTO.getEnvelopeCategoryId() != null) {
+            if (!envelopeCategoryRepository.existsById(envelopeDTO.getEnvelopeCategoryId())) {
+                throw new EntityNotFoundException(
+                        "EnvelopeCategory not found with id: " + envelopeDTO.getEnvelopeCategoryId());
+            }
+            envelope.setEnvelopeCategory(
+                    envelopeCategoryRepository.getReferenceById(envelopeDTO.getEnvelopeCategoryId()));
         }
 
         return envelope;

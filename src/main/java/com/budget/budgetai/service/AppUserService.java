@@ -18,10 +18,13 @@ public class AppUserService {
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EnvelopeCategoryService envelopeCategoryService;
 
-    public AppUserService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder) {
+    public AppUserService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder,
+            EnvelopeCategoryService envelopeCategoryService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.envelopeCategoryService = envelopeCategoryService;
     }
 
     public AppUserDTO create(AppUserDTO appUserDTO) {
@@ -36,7 +39,9 @@ public class AppUserService {
         }
         AppUser appUser = toEntity(appUserDTO);
         AppUser savedUser = appUserRepository.save(appUser);
-        return toDTO(savedUser);
+        AppUserDTO result = toDTO(savedUser);
+        envelopeCategoryService.seedDefaultCategories(savedUser.getId());
+        return result;
     }
 
     public AppUserDTO getById(UUID id) {

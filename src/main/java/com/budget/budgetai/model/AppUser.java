@@ -32,6 +32,9 @@ public class AppUser {
     @OneToMany(mappedBy = "appUser", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Envelope> envelopes;
 
+    @OneToMany(mappedBy = "appUser", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<EnvelopeCategory> envelopeCategories;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = ZonedDateTime.now();

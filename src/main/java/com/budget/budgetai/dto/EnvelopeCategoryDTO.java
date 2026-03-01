@@ -3,38 +3,28 @@ package com.budget.budgetai.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
-public class EnvelopeDTO {
+public class EnvelopeCategoryDTO {
 
     private UUID id;
 
     @NotNull(message = "App user ID is required")
     private UUID appUserId;
 
-    @NotNull(message = "Envelope category ID is required")
-    private UUID envelopeCategoryId;
-
     @NotBlank(message = "Name is required")
     private String name;
 
-    @NotNull(message = "Allocated balance is required")
-    private BigDecimal allocatedBalance;
-
     private ZonedDateTime createdAt;
 
-    public EnvelopeDTO() {
+    public EnvelopeCategoryDTO() {
     }
 
-    public EnvelopeDTO(UUID id, UUID appUserId, UUID envelopeCategoryId, String name, BigDecimal allocatedBalance,
-            ZonedDateTime createdAt) {
+    public EnvelopeCategoryDTO(UUID id, UUID appUserId, String name, ZonedDateTime createdAt) {
         this.id = id;
         this.appUserId = appUserId;
-        this.envelopeCategoryId = envelopeCategoryId;
         this.name = name;
-        this.allocatedBalance = allocatedBalance;
         this.createdAt = createdAt;
     }
 
@@ -54,28 +44,12 @@ public class EnvelopeDTO {
         this.appUserId = appUserId;
     }
 
-    public UUID getEnvelopeCategoryId() {
-        return envelopeCategoryId;
-    }
-
-    public void setEnvelopeCategoryId(UUID envelopeCategoryId) {
-        this.envelopeCategoryId = envelopeCategoryId;
-    }
-
     public String getName() {
         return name;
     }
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public BigDecimal getAllocatedBalance() {
-        return allocatedBalance;
-    }
-
-    public void setAllocatedBalance(BigDecimal allocatedBalance) {
-        this.allocatedBalance = allocatedBalance;
     }
 
     public ZonedDateTime getCreatedAt() {

@@ -4,7 +4,9 @@ import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.Envelope;
+import com.budget.budgetai.model.EnvelopeCategory;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -34,6 +36,9 @@ class EnvelopeServiceTest {
     private AppUserRepository appUserRepository;
 
     @Mock
+    private EnvelopeCategoryRepository envelopeCategoryRepository;
+
+    @Mock
     private TransactionRepository transactionRepository;
 
     @InjectMocks
@@ -41,7 +46,9 @@ class EnvelopeServiceTest {
 
     private UUID envelopeId;
     private UUID userId;
+    private UUID categoryId;
     private AppUser appUser;
+    private EnvelopeCategory envelopeCategory;
     private Envelope envelope;
     private EnvelopeDTO envelopeDTO;
 
@@ -49,19 +56,26 @@ class EnvelopeServiceTest {
     void setUp() {
         envelopeId = UUID.randomUUID();
         userId = UUID.randomUUID();
+        categoryId = UUID.randomUUID();
 
         appUser = new AppUser();
         appUser.setId(userId);
         appUser.setEmail("test@example.com");
 
+        envelopeCategory = new EnvelopeCategory();
+        envelopeCategory.setId(categoryId);
+        envelopeCategory.setAppUser(appUser);
+        envelopeCategory.setName("Bills");
+
         envelope = new Envelope();
         envelope.setId(envelopeId);
         envelope.setAppUser(appUser);
+        envelope.setEnvelopeCategory(envelopeCategory);
         envelope.setName("Groceries");
         envelope.setAllocatedBalance(new BigDecimal("500.00"));
         envelope.setCreatedAt(ZonedDateTime.now());
 
-        envelopeDTO = new EnvelopeDTO(null, userId, "Groceries", new BigDecimal("500.00"), null);
+        envelopeDTO = new EnvelopeDTO(null, userId, categoryId, "Groceries", new BigDecimal("500.00"), null);
     }
 
     // --- create ---
@@ -70,6 +84,8 @@ class EnvelopeServiceTest {
     void create_happyPath_returnsSavedDTO() {
         when(appUserRepository.existsById(userId)).thenReturn(true);
         when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
         when(envelopeRepository.save(any(Envelope.class))).thenReturn(envelope);
 
         EnvelopeDTO result = envelopeService.create(envelopeDTO);
@@ -86,6 +102,12 @@ class EnvelopeServiceTest {
         when(appUserRepository.existsById(userId)).thenReturn(false);
 
         assertThrows(EntityNotFoundException.class, () -> envelopeService.create(envelopeDTO));
+    }
+
+    @Test
+    void create_nullCategoryId_throwsIllegalArgumentException() {
+        envelopeDTO.setEnvelopeCategoryId(null);
+        assertThrows(IllegalArgumentException.class, () -> envelopeService.create(envelopeDTO));
     }
 
     @Test
@@ -204,14 +226,18 @@ class EnvelopeServiceTest {
 
     @Test
     void update_existing_updatesNameAndBalance() {
-        EnvelopeDTO updateDTO = new EnvelopeDTO(null, userId, "Entertainment", new BigDecimal("200.00"), null);
+        EnvelopeDTO updateDTO = new EnvelopeDTO(null, userId, categoryId, "Entertainment", new BigDecimal("200.00"),
+                null);
         Envelope updatedEnvelope = new Envelope();
         updatedEnvelope.setId(envelopeId);
         updatedEnvelope.setAppUser(appUser);
+        updatedEnvelope.setEnvelopeCategory(envelopeCategory);
         updatedEnvelope.setName("Entertainment");
         updatedEnvelope.setAllocatedBalance(new BigDecimal("200.00"));
 
         when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
         when(envelopeRepository.save(any(Envelope.class))).thenReturn(updatedEnvelope);
 
         EnvelopeDTO result = envelopeService.update(envelopeId, updateDTO);

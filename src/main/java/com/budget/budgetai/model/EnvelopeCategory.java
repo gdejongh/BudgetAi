@@ -3,15 +3,15 @@ package com.budget.budgetai.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import java.math.BigDecimal;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "envelope")
+@Table(name = "envelope_category")
 @Getter
 @Setter
-public class Envelope {
+public class EnvelopeCategory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -21,15 +21,11 @@ public class Envelope {
     @JoinColumn(name = "app_user_id", nullable = false)
     private AppUser appUser;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "envelope_category_id", nullable = false)
-    private EnvelopeCategory envelopeCategory;
-
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(name = "allocated_balance", nullable = false, precision = 19, scale = 2)
-    private BigDecimal allocatedBalance;
+    @OneToMany(mappedBy = "envelopeCategory", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Envelope> envelopes;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
