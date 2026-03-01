@@ -4,6 +4,7 @@ import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
@@ -24,14 +25,20 @@ public class EnvelopeService {
     private final AppUserRepository appUserRepository;
     private final EnvelopeCategoryRepository envelopeCategoryRepository;
     private final TransactionRepository transactionRepository;
+    private final EnvelopeAllocationRepository envelopeAllocationRepository;
+    private final EnvelopeAllocationService envelopeAllocationService;
 
     public EnvelopeService(EnvelopeRepository envelopeRepository, AppUserRepository appUserRepository,
             EnvelopeCategoryRepository envelopeCategoryRepository,
-            TransactionRepository transactionRepository) {
+            TransactionRepository transactionRepository,
+            EnvelopeAllocationRepository envelopeAllocationRepository,
+            EnvelopeAllocationService envelopeAllocationService) {
         this.envelopeRepository = envelopeRepository;
         this.appUserRepository = appUserRepository;
         this.envelopeCategoryRepository = envelopeCategoryRepository;
         this.transactionRepository = transactionRepository;
+        this.envelopeAllocationRepository = envelopeAllocationRepository;
+        this.envelopeAllocationService = envelopeAllocationService;
     }
 
     public EnvelopeDTO create(EnvelopeDTO envelopeDTO) {
@@ -52,6 +59,10 @@ public class EnvelopeService {
         }
         Envelope envelope = toEntity(envelopeDTO);
         Envelope savedEnvelope = envelopeRepository.save(envelope);
+
+        // Create initial monthly allocation for the current month
+        envelopeAllocationService.createInitialAllocation(savedEnvelope, envelopeDTO.getAllocatedBalance());
+
         return toDTO(savedEnvelope);
     }
 
@@ -68,14 +79,19 @@ public class EnvelopeService {
     }
 
     public List<EnvelopeDTO> getByAppUserId(UUID appUserId) {
-        return envelopeRepository.findByAppUserId(appUserId).stream()
-                .map(this::toDTO)
+        List<Envelope> envelopes = envelopeRepository.findByAppUserId(appUserId);
+        // Build a map of envelopeId -> total allocated (sum of all monthly allocations)
+        Map<UUID, BigDecimal> totalAllocMap = buildTotalAllocationMap(appUserId);
+        return envelopes.stream()
+                .map(e -> toDTO(e, totalAllocMap.getOrDefault(e.getId(), BigDecimal.ZERO)))
                 .collect(Collectors.toList());
     }
 
     public List<EnvelopeDTO> getByAppUserIdAndName(UUID appUserId, String name) {
-        return envelopeRepository.findByAppUserIdAndName(appUserId, name).stream()
-                .map(this::toDTO)
+        List<Envelope> envelopes = envelopeRepository.findByAppUserIdAndName(appUserId, name);
+        Map<UUID, BigDecimal> totalAllocMap = buildTotalAllocationMap(appUserId);
+        return envelopes.stream()
+                .map(e -> toDTO(e, totalAllocMap.getOrDefault(e.getId(), BigDecimal.ZERO)))
                 .collect(Collectors.toList());
     }
 
@@ -114,7 +130,9 @@ public class EnvelopeService {
         Envelope envelope = envelopeRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
         envelope.setName(envelopeDTO.getName());
-        envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
+        // Note: allocatedBalance is now managed via the envelope_allocation table.
+        // The entity's allocatedBalance field is kept for backward compatibility but
+        // is no longer the source of truth.
         if (envelopeDTO.getEnvelopeCategoryId() != null) {
             if (!envelopeCategoryRepository.existsById(envelopeDTO.getEnvelopeCategoryId())) {
                 throw new EntityNotFoundException(
@@ -134,8 +152,38 @@ public class EnvelopeService {
         envelopeRepository.deleteById(id);
     }
 
+    private Map<UUID, BigDecimal> buildTotalAllocationMap(UUID appUserId) {
+        List<Object[]> rows = envelopeAllocationRepository.sumAllocationsByEnvelopeForUser(appUserId);
+        Map<UUID, BigDecimal> map = new HashMap<>();
+        for (Object[] row : rows) {
+            map.put((UUID) row[0], (BigDecimal) row[1]);
+        }
+        return map;
+    }
+
     // Mapper methods
+
+    /**
+     * Convert entity to DTO. allocatedBalance = sum of all monthly allocations.
+     */
     private EnvelopeDTO toDTO(Envelope envelope) {
+        if (envelope == null) {
+            return null;
+        }
+        BigDecimal totalAllocated = envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelope.getId());
+        return new EnvelopeDTO(
+                envelope.getId(),
+                envelope.getAppUser().getId(),
+                envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
+                envelope.getName(),
+                totalAllocated,
+                envelope.getCreatedAt());
+    }
+
+    /**
+     * Convert entity to DTO with a pre-computed total allocation.
+     */
+    private EnvelopeDTO toDTO(Envelope envelope, BigDecimal totalAllocated) {
         if (envelope == null) {
             return null;
         }
@@ -144,7 +192,7 @@ public class EnvelopeService {
                 envelope.getAppUser().getId(),
                 envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
                 envelope.getName(),
-                envelope.getAllocatedBalance(),
+                totalAllocated,
                 envelope.getCreatedAt());
     }
 
