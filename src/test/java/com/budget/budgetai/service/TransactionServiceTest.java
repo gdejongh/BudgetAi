@@ -47,9 +47,6 @@ class TransactionServiceTest {
     @Mock
     private BankAccountService bankAccountService;
 
-    @Mock
-    private EnvelopeService envelopeService;
-
     @InjectMocks
     private TransactionService transactionService;
 
@@ -112,8 +109,6 @@ class TransactionServiceTest {
         when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction);
         doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
-        doNothing().when(envelopeService).updateBalance(any(UUID.class), any(BigDecimal.class));
-
 
         TransactionDTO result = transactionService.create(transactionDTO);
 
@@ -125,7 +120,6 @@ class TransactionServiceTest {
         assertEquals(bankAccountId, result.getBankAccountId());
         assertEquals(envelopeId, result.getEnvelopeId());
         verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("50.00"));
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("50.00"));
     }
 
     @Test
@@ -369,7 +363,8 @@ class TransactionServiceTest {
 
     // --- update ---
 
-// Add these tests to the // --- update --- section in TransactionServiceTest.java
+    // Add these tests to the // --- update --- section in
+    // TransactionServiceTest.java
 
     @Test
     void update_sameAmountSameBankAccount_noBalanceUpdate() {
@@ -382,7 +377,6 @@ class TransactionServiceTest {
         transactionService.update(transactionId, updateDTO);
 
         verify(bankAccountService, never()).updateBalance(any(), any());
-        verify(envelopeService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -406,7 +400,6 @@ class TransactionServiceTest {
 
         // difference = 75 - 50 = 25
         verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("25.00"));
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("25.00"));
     }
 
     @Test
@@ -457,11 +450,12 @@ class TransactionServiceTest {
 
         transactionService.update(transactionId, updateDTO);
 
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
+        // No envelope balance adjustments expected
+        verify(bankAccountService, never()).updateBalance(any(), any());
     }
 
     @Test
-    void update_envelopeAdded_appliesNewAmountToNewEnvelope() {
+    void update_envelopeAdded_noBalanceAdjustment() {
         transaction.setEnvelope(null);
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
@@ -483,24 +477,25 @@ class TransactionServiceTest {
 
         transactionService.update(transactionId, updateDTO);
 
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("50.00"));
+        // No envelope balance adjustments expected
+        verify(bankAccountService, never()).updateBalance(any(), any());
     }
 
     @Test
-    void update_differentEnvelope_reversesOldAndAppliesNewFullAmount() {
+    void update_differentEnvelope_noBalanceAdjustment() {
         UUID newEnvelopeId = UUID.randomUUID();
         Envelope newEnvelope = new Envelope();
         newEnvelope.setId(newEnvelopeId);
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, newEnvelopeId,
-                new BigDecimal("75.00"), "Changed envelope", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Changed envelope", LocalDate.of(2026, 2, 25), null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
         updatedTx.setAppUser(appUser);
         updatedTx.setBankAccount(bankAccount);
         updatedTx.setEnvelope(newEnvelope);
-        updatedTx.setAmount(new BigDecimal("75.00"));
+        updatedTx.setAmount(new BigDecimal("50.00"));
         updatedTx.setDescription("Changed envelope");
         updatedTx.setTransactionDate(LocalDate.of(2026, 2, 25));
 
@@ -511,8 +506,9 @@ class TransactionServiceTest {
 
         transactionService.update(transactionId, updateDTO);
 
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
-        verify(envelopeService).updateBalance(newEnvelopeId, new BigDecimal("75.00"));
+        // No envelope balance adjustments expected; same account + same amount = no
+        // bank change either
+        verify(bankAccountService, never()).updateBalance(any(), any());
     }
 
     @Test
@@ -537,7 +533,6 @@ class TransactionServiceTest {
         // difference = 80 - 50 = 30
         verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("30.00"));
     }
-
 
     @Test
     void update_existingTransaction_updatesFields() {
@@ -641,9 +636,7 @@ class TransactionServiceTest {
         transactionService.delete(transactionId);
 
         verify(transactionRepository).delete(transaction);
-        // Bonus: we can now verify that deleting a transaction correctly reverses its balances!
         verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("-50.00"));
-        verify(envelopeService).updateBalance(envelopeId, new BigDecimal("-50.00"));
     }
 
     @Test

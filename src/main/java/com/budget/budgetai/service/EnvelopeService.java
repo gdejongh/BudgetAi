@@ -1,17 +1,18 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.EnvelopeDTO;
-import com.budget.budgetai.model.BankAccount;
+import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
+import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.UUID;
+import java.time.LocalDate;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -20,10 +21,13 @@ public class EnvelopeService {
 
     private final EnvelopeRepository envelopeRepository;
     private final AppUserRepository appUserRepository;
+    private final TransactionRepository transactionRepository;
 
-    public EnvelopeService(EnvelopeRepository envelopeRepository, AppUserRepository appUserRepository) {
+    public EnvelopeService(EnvelopeRepository envelopeRepository, AppUserRepository appUserRepository,
+            TransactionRepository transactionRepository) {
         this.envelopeRepository = envelopeRepository;
         this.appUserRepository = appUserRepository;
+        this.transactionRepository = transactionRepository;
     }
 
     public EnvelopeDTO create(EnvelopeDTO envelopeDTO) {
@@ -68,12 +72,32 @@ public class EnvelopeService {
                 .collect(Collectors.toList());
     }
 
-    public void updateBalance(UUID id, BigDecimal balance) {
-        Envelope e = envelopeRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
-        BigDecimal updatedBalance = e.getAllocatedBalance().add(balance);
-        e.setAllocatedBalance(updatedBalance);
-        envelopeRepository.save(e);
+    public List<EnvelopeSpentSummaryDTO> getSpentSummaries(UUID appUserId, LocalDate startDate, LocalDate endDate) {
+        // Get all-time spent per envelope
+        List<Object[]> allTimeRows = transactionRepository.sumAmountByEnvelopeForUser(appUserId);
+        Map<UUID, BigDecimal> allTimeMap = new HashMap<>();
+        for (Object[] row : allTimeRows) {
+            allTimeMap.put((UUID) row[0], (BigDecimal) row[1]);
+        }
+
+        // Get period spent per envelope
+        List<Object[]> periodRows = transactionRepository.sumAmountByEnvelopeForUserInDateRange(appUserId, startDate,
+                endDate);
+        Map<UUID, BigDecimal> periodMap = new HashMap<>();
+        for (Object[] row : periodRows) {
+            periodMap.put((UUID) row[0], (BigDecimal) row[1]);
+        }
+
+        // Merge into a list covering all envelopes that have any spending
+        Set<UUID> envelopeIds = new HashSet<>(allTimeMap.keySet());
+        envelopeIds.addAll(periodMap.keySet());
+
+        return envelopeIds.stream()
+                .map(id -> new EnvelopeSpentSummaryDTO(
+                        id,
+                        allTimeMap.getOrDefault(id, BigDecimal.ZERO),
+                        periodMap.getOrDefault(id, BigDecimal.ZERO)))
+                .collect(Collectors.toList());
     }
 
     public EnvelopeDTO update(UUID id, EnvelopeDTO envelopeDTO) {
@@ -105,8 +129,7 @@ public class EnvelopeService {
                 envelope.getAppUser().getId(),
                 envelope.getName(),
                 envelope.getAllocatedBalance(),
-                envelope.getCreatedAt()
-        );
+                envelope.getCreatedAt());
     }
 
     private Envelope toEntity(EnvelopeDTO envelopeDTO) {

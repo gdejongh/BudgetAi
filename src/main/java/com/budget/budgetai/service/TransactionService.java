@@ -25,17 +25,15 @@ public class TransactionService {
     private final BankAccountRepository bankAccountRepository;
     private final EnvelopeRepository envelopeRepository;
     private final BankAccountService bankAccountService;
-    private final EnvelopeService envelopeService;
 
     public TransactionService(TransactionRepository transactionRepository, AppUserRepository appUserRepository,
-                              BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository,
-                              BankAccountService bankAccountService, EnvelopeService envelopeService) {
+            BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository,
+            BankAccountService bankAccountService) {
         this.transactionRepository = transactionRepository;
         this.appUserRepository = appUserRepository;
         this.bankAccountRepository = bankAccountRepository;
         this.envelopeRepository = envelopeRepository;
         this.bankAccountService = bankAccountService;
-        this.envelopeService = envelopeService;
     }
 
     public TransactionDTO create(TransactionDTO transactionDTO) {
@@ -56,9 +54,6 @@ public class TransactionService {
         }
         Transaction transaction = toEntity(transactionDTO);
         bankAccountService.updateBalance(transaction.getBankAccount().getId(), transaction.getAmount());
-        if (transaction.getEnvelope() != null) {
-            envelopeService.updateBalance(transaction.getEnvelope().getId(), transaction.getAmount());
-        }
         Transaction savedTransaction = transactionRepository.save(transaction);
         return toDTO(savedTransaction);
     }
@@ -99,7 +94,8 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
-    public List<TransactionDTO> getByAppUserIdAndTransactionDateBetween(UUID appUserId, LocalDate startDate, LocalDate endDate) {
+    public List<TransactionDTO> getByAppUserIdAndTransactionDateBetween(UUID appUserId, LocalDate startDate,
+            LocalDate endDate) {
         return transactionRepository.findByAppUserIdAndTransactionDateBetween(appUserId, startDate, endDate).stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
@@ -114,7 +110,8 @@ public class TransactionService {
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
 
         UUID oldBankAccountId = transaction.getBankAccount() != null ? transaction.getBankAccount().getId() : null;
-        UUID newBankAccountId = transactionDTO.getBankAccountId() != null ? transactionDTO.getBankAccountId() : oldBankAccountId;
+        UUID newBankAccountId = transactionDTO.getBankAccountId() != null ? transactionDTO.getBankAccountId()
+                : oldBankAccountId;
 
         UUID oldEnvelopeId = transaction.getEnvelope() != null ? transaction.getEnvelope().getId() : null;
         UUID newEnvelopeId = transactionDTO.getEnvelopeId();
@@ -133,7 +130,7 @@ public class TransactionService {
             }
         }
 
-        adjustBalances(oldBankAccountId, newBankAccountId, oldEnvelopeId, newEnvelopeId, oldAmount, newAmount);
+        adjustBankAccountBalance(oldBankAccountId, newBankAccountId, oldAmount, newAmount);
 
         if (newBankAccountId != null && !newBankAccountId.equals(oldBankAccountId)) {
             transaction.setBankAccount(bankAccountRepository.getReferenceById(newBankAccountId));
@@ -157,24 +154,17 @@ public class TransactionService {
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
 
         UUID oldBankAccountId = transaction.getBankAccount() != null ? transaction.getBankAccount().getId() : null;
-        UUID oldEnvelopeId = transaction.getEnvelope() != null ? transaction.getEnvelope().getId() : null;
 
-        adjustBalances(
-                oldBankAccountId, null,
-                oldEnvelopeId, null,
-                transaction.getAmount(), BigDecimal.ZERO
-        );
+        adjustBankAccountBalance(oldBankAccountId, null, transaction.getAmount(), BigDecimal.ZERO);
 
         transactionRepository.delete(transaction);
     }
 
-    private void adjustBalances(UUID oldAccountId, UUID newAccountId,
-                                UUID oldEnvelopeId, UUID newEnvelopeId,
-                                BigDecimal oldAmount, BigDecimal newAmount) {
+    private void adjustBankAccountBalance(UUID oldAccountId, UUID newAccountId,
+            BigDecimal oldAmount, BigDecimal newAmount) {
 
         BigDecimal amountDifference = newAmount.subtract(oldAmount);
 
-        // --- Bank Account Logic ---
         if (oldAccountId != null && newAccountId == null) {
             // Revert (used for delete)
             bankAccountService.updateBalance(oldAccountId, oldAmount.negate());
@@ -189,24 +179,6 @@ public class TransactionService {
             } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
                 // Same account, apply difference
                 bankAccountService.updateBalance(oldAccountId, amountDifference);
-            }
-        }
-
-        // --- Envelope Logic ---
-        if (oldEnvelopeId != null && newEnvelopeId == null) {
-            // Revert (used for delete or envelope removal)
-            envelopeService.updateBalance(oldEnvelopeId, oldAmount.negate());
-        } else if (oldEnvelopeId == null && newEnvelopeId != null) {
-            // Apply new (used for envelope addition)
-            envelopeService.updateBalance(newEnvelopeId, newAmount);
-        } else if (oldEnvelopeId != null) { // both are not null
-            if (!oldEnvelopeId.equals(newEnvelopeId)) {
-                // Envelope changed
-                envelopeService.updateBalance(oldEnvelopeId, oldAmount.negate());
-                envelopeService.updateBalance(newEnvelopeId, newAmount);
-            } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
-                // Same envelope, apply difference
-                envelopeService.updateBalance(oldEnvelopeId, amountDifference);
             }
         }
     }
@@ -224,8 +196,7 @@ public class TransactionService {
                 transaction.getAmount(),
                 transaction.getDescription(),
                 transaction.getTransactionDate(),
-                transaction.getCreatedAt()
-        );
+                transaction.getCreatedAt());
     }
 
     private Transaction toEntity(TransactionDTO transactionDTO) {
@@ -247,7 +218,8 @@ public class TransactionService {
 
         if (transactionDTO.getBankAccountId() != null) {
             if (!bankAccountRepository.existsById(transactionDTO.getBankAccountId())) {
-                throw new EntityNotFoundException("BankAccount not found with id: " + transactionDTO.getBankAccountId());
+                throw new EntityNotFoundException(
+                        "BankAccount not found with id: " + transactionDTO.getBankAccountId());
             }
             transaction.setBankAccount(bankAccountRepository.getReferenceById(transactionDTO.getBankAccountId()));
         }

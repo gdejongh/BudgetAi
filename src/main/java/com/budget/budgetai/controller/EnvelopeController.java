@@ -3,15 +3,18 @@ package com.budget.budgetai.controller;
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.CreateEnvelopeRequest;
 import com.budget.budgetai.dto.EnvelopeDTO;
+import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.service.EnvelopeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -54,6 +57,15 @@ public class EnvelopeController {
             return ResponseEntity.ok(envelopeService.getByAppUserIdAndName(userId, name));
         }
         return ResponseEntity.ok(envelopeService.getByAppUserId(userId));
+    }
+
+    @GetMapping("/spent-summary")
+    @Operation(operationId = "getEnvelopeSpentSummary", summary = "Get spent summary per envelope for the current user")
+    public ResponseEntity<List<EnvelopeSpentSummaryDTO>> getSpentSummary(
+            @Parameter(description = "Period start date (yyyy-MM-dd)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Period end date (yyyy-MM-dd)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(envelopeService.getSpentSummaries(userId, startDate, endDate));
     }
 
     @PutMapping("/{id}")

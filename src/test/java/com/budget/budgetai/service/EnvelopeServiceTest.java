@@ -1,10 +1,12 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.EnvelopeDTO;
+import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
+import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,11 +16,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,6 +32,9 @@ class EnvelopeServiceTest {
 
     @Mock
     private AppUserRepository appUserRepository;
+
+    @Mock
+    private TransactionRepository transactionRepository;
 
     @InjectMocks
     private EnvelopeService envelopeService;
@@ -248,36 +251,50 @@ class EnvelopeServiceTest {
         assertThrows(EntityNotFoundException.class, () -> envelopeService.delete(envelopeId));
     }
 
+    // --- getSpentSummaries ---
+
     @Test
-    void updateBalance_existingEnvelope_updatesBalance() {
-        UUID envelopeId = UUID.randomUUID();
-        EnvelopeRepository repo = mock(EnvelopeRepository.class);
-        AppUserRepository userRepo = mock(AppUserRepository.class);
-        EnvelopeService service = new EnvelopeService(repo, userRepo);
+    void getSpentSummaries_returnsAllTimeAndPeriodSpent() {
+        LocalDate start = LocalDate.of(2026, 2, 1);
+        LocalDate end = LocalDate.of(2026, 2, 28);
+        UUID envelope1Id = UUID.randomUUID();
+        UUID envelope2Id = UUID.randomUUID();
 
-        Envelope envelope = new Envelope();
-        envelope.setId(envelopeId);
-        envelope.setAllocatedBalance(new BigDecimal("100.00"));
+        List<Object[]> allTimeRows = Arrays.asList(
+                new Object[] { envelope1Id, new BigDecimal("200.00") },
+                new Object[] { envelope2Id, new BigDecimal("350.00") });
+        List<Object[]> periodRows = Collections.singletonList(
+                new Object[] { envelope1Id, new BigDecimal("100.00") });
 
-        when(repo.findById(envelopeId)).thenReturn(Optional.of(envelope));
-        when(repo.save(any(Envelope.class))).thenReturn(envelope);
+        when(transactionRepository.sumAmountByEnvelopeForUser(userId)).thenReturn(allTimeRows);
+        when(transactionRepository.sumAmountByEnvelopeForUserInDateRange(userId, start, end)).thenReturn(periodRows);
 
-        service.updateBalance(envelopeId, new BigDecimal("50.00"));
+        List<EnvelopeSpentSummaryDTO> result = envelopeService.getSpentSummaries(userId, start, end);
 
-        assertEquals(new BigDecimal("150.00"), envelope.getAllocatedBalance());
-        verify(repo).save(envelope);
+        assertEquals(2, result.size());
+
+        EnvelopeSpentSummaryDTO summary1 = result.stream()
+                .filter(s -> s.getEnvelopeId().equals(envelope1Id)).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("200.00"), summary1.getTotalSpent());
+        assertEquals(new BigDecimal("100.00"), summary1.getPeriodSpent());
+
+        EnvelopeSpentSummaryDTO summary2 = result.stream()
+                .filter(s -> s.getEnvelopeId().equals(envelope2Id)).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("350.00"), summary2.getTotalSpent());
+        assertEquals(BigDecimal.ZERO, summary2.getPeriodSpent());
     }
 
     @Test
-    void updateBalance_nonExistingEnvelope_throwsException() {
-        UUID envelopeId = UUID.randomUUID();
-        EnvelopeRepository repo = mock(EnvelopeRepository.class);
-        AppUserRepository userRepo = mock(AppUserRepository.class);
-        EnvelopeService service = new EnvelopeService(repo, userRepo);
+    void getSpentSummaries_noTransactions_returnsEmptyList() {
+        LocalDate start = LocalDate.of(2026, 2, 1);
+        LocalDate end = LocalDate.of(2026, 2, 28);
 
-        when(repo.findById(envelopeId)).thenReturn(Optional.empty());
+        when(transactionRepository.sumAmountByEnvelopeForUser(userId)).thenReturn(Collections.emptyList());
+        when(transactionRepository.sumAmountByEnvelopeForUserInDateRange(userId, start, end))
+                .thenReturn(Collections.emptyList());
 
-        assertThrows(EntityNotFoundException.class, () ->
-                service.updateBalance(envelopeId, new BigDecimal("10.00")));
+        List<EnvelopeSpentSummaryDTO> result = envelopeService.getSpentSummaries(userId, start, end);
+
+        assertTrue(result.isEmpty());
     }
 }
