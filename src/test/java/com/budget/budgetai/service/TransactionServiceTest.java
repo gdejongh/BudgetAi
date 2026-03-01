@@ -1,10 +1,13 @@
 package com.budget.budgetai.service;
 
+import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
+import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.model.Transaction;
+import com.budget.budgetai.model.TransactionType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
@@ -28,6 +31,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class TransactionServiceTest {
@@ -94,7 +98,10 @@ class TransactionServiceTest {
         transaction.setCreatedAt(ZonedDateTime.now());
 
         transactionDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
-                new BigDecimal("50.00"), "Grocery shopping", LocalDate.of(2026, 2, 20), null);
+                new BigDecimal("50.00"), "Grocery shopping", LocalDate.of(2026, 2, 20), null, null, null);
+
+        // Default: all accounts are non-CC for existing tests
+        lenient().when(bankAccountService.isCreditCard(any(UUID.class))).thenReturn(false);
     }
 
     // --- create ---
@@ -369,7 +376,7 @@ class TransactionServiceTest {
     @Test
     void update_sameAmountSameBankAccount_noBalanceUpdate() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
-                new BigDecimal("50.00"), "Same amount", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Same amount", LocalDate.of(2026, 2, 25), null, null, null);
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(transaction);
@@ -382,7 +389,7 @@ class TransactionServiceTest {
     @Test
     void update_differentAmountSameBankAccount_appliesDifferenceToBalance() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
-                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -409,7 +416,7 @@ class TransactionServiceTest {
         newBankAccount.setId(newBankAccountId);
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, newBankAccountId, envelopeId,
-                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("75.00"), "Updated", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -434,7 +441,7 @@ class TransactionServiceTest {
     @Test
     void update_envelopeRemoved_reversesOldEnvelopeBalance() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, null,
-                new BigDecimal("50.00"), "No envelope", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "No envelope", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -459,7 +466,7 @@ class TransactionServiceTest {
         transaction.setEnvelope(null);
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
-                new BigDecimal("50.00"), "With envelope", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "With envelope", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -488,7 +495,7 @@ class TransactionServiceTest {
         newEnvelope.setId(newEnvelopeId);
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, newEnvelopeId,
-                new BigDecimal("50.00"), "Changed envelope", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Changed envelope", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -514,7 +521,7 @@ class TransactionServiceTest {
     @Test
     void update_noBankAccountIdInDTO_appliesDifferenceToExistingBankAccount() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, null, envelopeId,
-                new BigDecimal("80.00"), "No bank account id", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("80.00"), "No bank account id", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -537,7 +544,7 @@ class TransactionServiceTest {
     @Test
     void update_existingTransaction_updatesFields() {
         TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, envelopeId,
-                new BigDecimal("75.00"), "Updated description", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("75.00"), "Updated description", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -580,7 +587,7 @@ class TransactionServiceTest {
         newBankAccount.setName("Savings");
 
         TransactionDTO updateDTO = new TransactionDTO(null, userId, newBankAccountId, null,
-                new BigDecimal("50.00"), "Transfer", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Transfer", LocalDate.of(2026, 2, 25), null, null, null);
 
         Transaction updatedTx = new Transaction();
         updatedTx.setId(transactionId);
@@ -607,7 +614,7 @@ class TransactionServiceTest {
     void update_invalidBankAccount_throwsEntityNotFoundException() {
         UUID invalidBankAccountId = UUID.randomUUID();
         TransactionDTO updateDTO = new TransactionDTO(null, userId, invalidBankAccountId, null,
-                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 25), null, null, null);
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(bankAccountRepository.existsById(invalidBankAccountId)).thenReturn(false);
@@ -619,7 +626,7 @@ class TransactionServiceTest {
     void update_invalidEnvelope_throwsEntityNotFoundException() {
         UUID invalidEnvelopeId = UUID.randomUUID();
         TransactionDTO updateDTO = new TransactionDTO(null, userId, null, invalidEnvelopeId,
-                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 25), null);
+                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 25), null, null, null);
 
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
         when(envelopeRepository.existsById(invalidEnvelopeId)).thenReturn(false);
@@ -644,5 +651,165 @@ class TransactionServiceTest {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> transactionService.delete(transactionId));
+    }
+
+    // --- Credit Card Tests ---
+
+    @Test
+    void create_creditCardPurchase_invertsBalanceUpdate() {
+        UUID ccId = UUID.randomUUID();
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(BigDecimal.ZERO);
+
+        TransactionDTO ccDTO = new TransactionDTO(null, userId, ccId, envelopeId,
+                new BigDecimal("-25.00"), "Grocery purchase", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction ccTx = new Transaction();
+        ccTx.setId(UUID.randomUUID());
+        ccTx.setAppUser(appUser);
+        ccTx.setBankAccount(creditCard);
+        ccTx.setEnvelope(envelope);
+        ccTx.setAmount(new BigDecimal("-25.00"));
+        ccTx.setDescription("Grocery purchase");
+        ccTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        ccTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(ccTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
+        transactionService.create(ccDTO);
+
+        // CC purchase of -25 should invert to +25 on the CC balance (increases debt)
+        verify(bankAccountService).updateBalance(ccId, new BigDecimal("25.00"));
+    }
+
+    @Test
+    void delete_creditCardTransaction_invertsRevert() {
+        UUID ccId = UUID.randomUUID();
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(new BigDecimal("25.00"));
+
+        Transaction ccTx = new Transaction();
+        ccTx.setId(UUID.randomUUID());
+        ccTx.setAppUser(appUser);
+        ccTx.setBankAccount(creditCard);
+        ccTx.setEnvelope(envelope);
+        ccTx.setAmount(new BigDecimal("-25.00"));
+        ccTx.setDescription("Grocery purchase");
+        ccTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+
+        when(transactionRepository.findById(ccTx.getId())).thenReturn(Optional.of(ccTx));
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
+        transactionService.delete(ccTx.getId());
+
+        // Deleting a CC purchase of -25: revert = amount itself = -25 (reduces debt)
+        verify(bankAccountService).updateBalance(ccId, new BigDecimal("-25.00"));
+        verify(transactionRepository).delete(ccTx);
+    }
+
+    @Test
+    void createCCPayment_happyPath_createsTwoLinkedTransactions() {
+        UUID ccId = UUID.randomUUID();
+        CCPaymentRequest request = new CCPaymentRequest(
+                bankAccountId, ccId, new BigDecimal("100.00"),
+                "CC Payment", LocalDate.of(2026, 3, 1));
+
+        Transaction bankTxn = new Transaction();
+        bankTxn.setId(UUID.randomUUID());
+        bankTxn.setAppUser(appUser);
+        bankTxn.setBankAccount(bankAccount);
+        bankTxn.setAmount(new BigDecimal("-100.00"));
+        bankTxn.setTransactionType(TransactionType.CC_PAYMENT);
+
+        Transaction ccTxn = new Transaction();
+        ccTxn.setId(UUID.randomUUID());
+        ccTxn.setAppUser(appUser);
+        ccTxn.setBankAccount(bankAccount);
+        ccTxn.setAmount(new BigDecimal("100.00"));
+        ccTxn.setTransactionType(TransactionType.CC_PAYMENT);
+
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        when(bankAccountService.isCreditCard(bankAccountId)).thenReturn(false);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.getReferenceById(bankAccountId)).thenReturn(bankAccount);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(bankAccount);
+        when(transactionRepository.save(any(Transaction.class)))
+                .thenReturn(bankTxn)
+                .thenReturn(ccTxn)
+                .thenReturn(bankTxn)
+                .thenReturn(ccTxn);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
+        TransactionDTO result = transactionService.createCCPayment(request, userId);
+
+        assertNotNull(result);
+        // 4 saves: bank txn, cc txn, bank txn (link), cc txn (link)
+        verify(transactionRepository, times(4)).save(any(Transaction.class));
+        // Bank account decreases by 100
+        verify(bankAccountService).updateBalance(bankAccountId, new BigDecimal("-100.00"));
+        // CC debt decreases by 100
+        verify(bankAccountService).updateBalance(ccId, new BigDecimal("-100.00"));
+    }
+
+    @Test
+    void createCCPayment_sourceIsCreditCard_throws() {
+        UUID ccId = UUID.randomUUID();
+        UUID anotherCcId = UUID.randomUUID();
+        CCPaymentRequest request = new CCPaymentRequest(
+                anotherCcId, ccId, new BigDecimal("50.00"),
+                null, LocalDate.of(2026, 3, 1));
+
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        when(bankAccountService.isCreditCard(anotherCcId)).thenReturn(true);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> transactionService.createCCPayment(request, userId));
+    }
+
+    @Test
+    void createCCPayment_targetNotCreditCard_throws() {
+        UUID notCcId = UUID.randomUUID();
+        CCPaymentRequest request = new CCPaymentRequest(
+                bankAccountId, notCcId, new BigDecimal("50.00"),
+                null, LocalDate.of(2026, 3, 1));
+
+        when(bankAccountService.isCreditCard(notCcId)).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> transactionService.createCCPayment(request, userId));
+    }
+
+    @Test
+    void createCCPayment_nullRequest_throws() {
+        assertThrows(IllegalArgumentException.class,
+                () -> transactionService.createCCPayment(null, userId));
+    }
+
+    @Test
+    void createCCPayment_zeroAmount_throws() {
+        UUID ccId = UUID.randomUUID();
+        CCPaymentRequest request = new CCPaymentRequest(
+                bankAccountId, ccId, BigDecimal.ZERO,
+                null, LocalDate.of(2026, 3, 1));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> transactionService.createCCPayment(request, userId));
     }
 }

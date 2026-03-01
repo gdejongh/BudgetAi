@@ -1,7 +1,10 @@
 package com.budget.budgetai.service;
 
+import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
+import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.Transaction;
+import com.budget.budgetai.model.TransactionType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
@@ -53,7 +56,13 @@ public class TransactionService {
             throw new IllegalArgumentException("Bank account ID cannot be null");
         }
         Transaction transaction = toEntity(transactionDTO);
-        bankAccountService.updateBalance(transaction.getBankAccount().getId(), transaction.getAmount());
+        // For credit cards, invert the balance update: positive balance = debt owed
+        // A purchase (negative amount) increases debt; a refund (positive amount)
+        // decreases debt
+        BigDecimal balanceUpdate = isCreditCard(transaction.getBankAccount().getId())
+                ? transaction.getAmount().negate()
+                : transaction.getAmount();
+        bankAccountService.updateBalance(transaction.getBankAccount().getId(), balanceUpdate);
         Transaction savedTransaction = transactionRepository.save(transaction);
         return toDTO(savedTransaction);
     }
@@ -153,9 +162,32 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
 
+        // If this is a CC_PAYMENT, also delete the linked transaction and revert its
+        // balance
+        if (transaction.getTransactionType() == TransactionType.CC_PAYMENT
+                && transaction.getLinkedTransaction() != null) {
+            Transaction linked = transaction.getLinkedTransaction();
+            UUID linkedAccountId = linked.getBankAccount().getId();
+            BigDecimal linkedRevert = isCreditCard(linkedAccountId)
+                    ? linked.getAmount()
+                    : linked.getAmount().negate();
+            bankAccountService.updateBalance(linkedAccountId, linkedRevert);
+            // Clear the mutual reference before deleting
+            linked.setLinkedTransaction(null);
+            transaction.setLinkedTransaction(null);
+            transactionRepository.save(linked);
+            transactionRepository.save(transaction);
+            transactionRepository.delete(linked);
+        }
+
         UUID oldBankAccountId = transaction.getBankAccount() != null ? transaction.getBankAccount().getId() : null;
 
-        adjustBankAccountBalance(oldBankAccountId, null, transaction.getAmount(), BigDecimal.ZERO);
+        if (oldBankAccountId != null) {
+            BigDecimal revertAmount = isCreditCard(oldBankAccountId)
+                    ? transaction.getAmount()
+                    : transaction.getAmount().negate();
+            bankAccountService.updateBalance(oldBankAccountId, revertAmount);
+        }
 
         transactionRepository.delete(transaction);
     }
@@ -167,20 +199,98 @@ public class TransactionService {
 
         if (oldAccountId != null && newAccountId == null) {
             // Revert (used for delete)
-            bankAccountService.updateBalance(oldAccountId, oldAmount.negate());
+            BigDecimal revert = isCreditCard(oldAccountId)
+                    ? oldAmount
+                    : oldAmount.negate();
+            bankAccountService.updateBalance(oldAccountId, revert);
         } else if (oldAccountId == null && newAccountId != null) {
             // Apply new (used if a transaction previously lacked an account)
-            bankAccountService.updateBalance(newAccountId, newAmount);
+            BigDecimal apply = isCreditCard(newAccountId)
+                    ? newAmount.negate()
+                    : newAmount;
+            bankAccountService.updateBalance(newAccountId, apply);
         } else if (oldAccountId != null) { // both are not null
             if (!oldAccountId.equals(newAccountId)) {
-                // Account changed
-                bankAccountService.updateBalance(oldAccountId, oldAmount.negate());
-                bankAccountService.updateBalance(newAccountId, newAmount);
+                // Account changed — revert old, apply new
+                BigDecimal revertOld = isCreditCard(oldAccountId)
+                        ? oldAmount
+                        : oldAmount.negate();
+                BigDecimal applyNew = isCreditCard(newAccountId)
+                        ? newAmount.negate()
+                        : newAmount;
+                bankAccountService.updateBalance(oldAccountId, revertOld);
+                bankAccountService.updateBalance(newAccountId, applyNew);
             } else if (amountDifference.compareTo(BigDecimal.ZERO) != 0) {
                 // Same account, apply difference
-                bankAccountService.updateBalance(oldAccountId, amountDifference);
+                BigDecimal diff = isCreditCard(oldAccountId)
+                        ? amountDifference.negate()
+                        : amountDifference;
+                bankAccountService.updateBalance(oldAccountId, diff);
             }
         }
+    }
+
+    /**
+     * Creates a credit card payment — two linked transactions:
+     * 1. Bank account side: negative amount (money leaves bank)
+     * 2. Credit card side: negative amount (debt reduced, stored as positive
+     * balance decrease)
+     */
+    public TransactionDTO createCCPayment(CCPaymentRequest request, UUID appUserId) {
+        if (request == null) {
+            throw new IllegalArgumentException("CCPaymentRequest cannot be null");
+        }
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than zero");
+        }
+        if (!bankAccountService.isCreditCard(request.getCreditCardId())) {
+            throw new IllegalArgumentException("Target account is not a credit card");
+        }
+        if (bankAccountService.isCreditCard(request.getBankAccountId())) {
+            throw new IllegalArgumentException("Source account cannot be a credit card");
+        }
+
+        String description = request.getDescription() != null && !request.getDescription().isBlank()
+                ? request.getDescription()
+                : "Credit Card Payment";
+
+        // Bank side: money leaves the bank account (negative amount)
+        Transaction bankTxn = new Transaction();
+        bankTxn.setAppUser(appUserRepository.getReferenceById(appUserId));
+        bankTxn.setBankAccount(bankAccountRepository.getReferenceById(request.getBankAccountId()));
+        bankTxn.setAmount(request.getAmount().negate());
+        bankTxn.setDescription(description);
+        bankTxn.setTransactionDate(request.getTransactionDate());
+        bankTxn.setTransactionType(TransactionType.CC_PAYMENT);
+        Transaction savedBankTxn = transactionRepository.save(bankTxn);
+
+        // CC side: debt is reduced (positive amount on the CC means debt decrease)
+        Transaction ccTxn = new Transaction();
+        ccTxn.setAppUser(appUserRepository.getReferenceById(appUserId));
+        ccTxn.setBankAccount(bankAccountRepository.getReferenceById(request.getCreditCardId()));
+        ccTxn.setAmount(request.getAmount());
+        ccTxn.setDescription(description);
+        ccTxn.setTransactionDate(request.getTransactionDate());
+        ccTxn.setTransactionType(TransactionType.CC_PAYMENT);
+        Transaction savedCcTxn = transactionRepository.save(ccTxn);
+
+        // Link them together
+        savedBankTxn.setLinkedTransaction(savedCcTxn);
+        savedCcTxn.setLinkedTransaction(savedBankTxn);
+        transactionRepository.save(savedBankTxn);
+        transactionRepository.save(savedCcTxn);
+
+        // Update balances:
+        // Bank account: subtract the payment amount
+        bankAccountService.updateBalance(request.getBankAccountId(), request.getAmount().negate());
+        // Credit card: reduce debt (subtract from positive balance)
+        bankAccountService.updateBalance(request.getCreditCardId(), request.getAmount().negate());
+
+        return toDTO(savedBankTxn);
+    }
+
+    private boolean isCreditCard(UUID accountId) {
+        return bankAccountService.isCreditCard(accountId);
     }
 
     // Mapper methods
@@ -196,6 +306,9 @@ public class TransactionService {
                 transaction.getAmount(),
                 transaction.getDescription(),
                 transaction.getTransactionDate(),
+                transaction.getTransactionType() != null ? transaction.getTransactionType().name()
+                        : TransactionType.STANDARD.name(),
+                transaction.getLinkedTransaction() != null ? transaction.getLinkedTransaction().getId() : null,
                 transaction.getCreatedAt());
     }
 
@@ -208,6 +321,10 @@ public class TransactionService {
         transaction.setAmount(transactionDTO.getAmount());
         transaction.setDescription(transactionDTO.getDescription());
         transaction.setTransactionDate(transactionDTO.getTransactionDate());
+
+        if (transactionDTO.getTransactionType() != null) {
+            transaction.setTransactionType(TransactionType.valueOf(transactionDTO.getTransactionType()));
+        }
 
         if (transactionDTO.getAppUserId() != null) {
             if (!appUserRepository.existsById(transactionDTO.getAppUserId())) {

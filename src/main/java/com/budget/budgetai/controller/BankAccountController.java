@@ -32,6 +32,7 @@ public class BankAccountController {
         BankAccountDTO bankAccountDTO = new BankAccountDTO();
         bankAccountDTO.setAppUserId(userId);
         bankAccountDTO.setName(request.getName());
+        bankAccountDTO.setAccountType(request.getAccountType());
         bankAccountDTO.setCurrentBalance(request.getCurrentBalance());
         BankAccountDTO created = bankAccountService.create(bankAccountDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);

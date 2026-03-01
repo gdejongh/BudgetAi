@@ -36,6 +36,14 @@ public class Transaction {
 
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transaction_type", nullable = false, length = 20)
+    private TransactionType transactionType = TransactionType.STANDARD;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "linked_transaction_id")
+    private Transaction linkedTransaction;
+
     @Column(name = "transaction_date", nullable = false)
     private LocalDate transactionDate;
 

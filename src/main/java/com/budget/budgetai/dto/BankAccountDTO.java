@@ -17,6 +17,8 @@ public class BankAccountDTO {
     @NotBlank(message = "Name is required")
     private String name;
 
+    private String accountType;
+
     @NotNull(message = "Current balance is required")
     private BigDecimal currentBalance;
 
@@ -25,10 +27,12 @@ public class BankAccountDTO {
     public BankAccountDTO() {
     }
 
-    public BankAccountDTO(UUID id, UUID appUserId, String name, BigDecimal currentBalance, ZonedDateTime createdAt) {
+    public BankAccountDTO(UUID id, UUID appUserId, String name, String accountType, BigDecimal currentBalance,
+            ZonedDateTime createdAt) {
         this.id = id;
         this.appUserId = appUserId;
         this.name = name;
+        this.accountType = accountType;
         this.currentBalance = currentBalance;
         this.createdAt = createdAt;
     }
@@ -55,6 +59,14 @@ public class BankAccountDTO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getAccountType() {
+        return accountType;
+    }
+
+    public void setAccountType(String accountType) {
+        this.accountType = accountType;
     }
 
     public BigDecimal getCurrentBalance() {

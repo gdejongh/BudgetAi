@@ -25,6 +25,10 @@ public class BankAccount {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_type", nullable = false, length = 20)
+    private AccountType accountType = AccountType.CHECKING;
+
     @Column(name = "current_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal currentBalance;
 

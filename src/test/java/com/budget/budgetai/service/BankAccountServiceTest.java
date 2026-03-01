@@ -1,6 +1,7 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.BankAccountDTO;
+import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.model.Transaction;
@@ -64,7 +65,7 @@ class BankAccountServiceTest {
         bankAccount.setCurrentBalance(new BigDecimal("1000.00"));
         bankAccount.setCreatedAt(ZonedDateTime.now());
 
-        bankAccountDTO = new BankAccountDTO(null, userId, "Checking", new BigDecimal("1000.00"), null);
+        bankAccountDTO = new BankAccountDTO(null, userId, "Checking", "CHECKING", new BigDecimal("1000.00"), null);
     }
 
     // --- create ---
@@ -101,7 +102,7 @@ class BankAccountServiceTest {
 
     @Test
     void create_zeroBalance_doesNotCreateTransaction() {
-        BankAccountDTO zeroDTO = new BankAccountDTO(null, userId, "Checking", BigDecimal.ZERO, null);
+        BankAccountDTO zeroDTO = new BankAccountDTO(null, userId, "Checking", "CHECKING", BigDecimal.ZERO, null);
         BankAccount zeroAccount = new BankAccount();
         zeroAccount.setId(accountId);
         zeroAccount.setAppUser(appUser);
@@ -234,7 +235,8 @@ class BankAccountServiceTest {
 
     @Test
     void update_existing_updatesNameAndBalance() {
-        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", new BigDecimal("5000.00"), null);
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", "CHECKING", new BigDecimal("5000.00"),
+                null);
         BankAccount updatedAccount = new BankAccount();
         updatedAccount.setId(accountId);
         updatedAccount.setAppUser(appUser);
@@ -253,7 +255,8 @@ class BankAccountServiceTest {
 
     @Test
     void update_balanceChanged_createsAdjustmentTransaction() {
-        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Checking", new BigDecimal("800.00"), null);
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Checking", "CHECKING", new BigDecimal("800.00"),
+                null);
         BankAccount updatedAccount = new BankAccount();
         updatedAccount.setId(accountId);
         updatedAccount.setAppUser(appUser);
@@ -274,7 +277,8 @@ class BankAccountServiceTest {
 
     @Test
     void update_sameBalance_doesNotCreateTransaction() {
-        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", new BigDecimal("1000.00"), null);
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Savings", "CHECKING", new BigDecimal("1000.00"),
+                null);
         BankAccount updatedAccount = new BankAccount();
         updatedAccount.setId(accountId);
         updatedAccount.setAppUser(appUser);
@@ -351,5 +355,61 @@ class BankAccountServiceTest {
         when(repo.findById(accountId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> service.updateBalance(accountId, new BigDecimal("10.00")));
+    }
+
+    // --- isCreditCard ---
+
+    @Test
+    void isCreditCard_creditCardAccount_returnsTrue() {
+        BankAccount cc = new BankAccount();
+        cc.setId(accountId);
+        cc.setAppUser(appUser);
+        cc.setName("Visa");
+        cc.setAccountType(AccountType.CREDIT_CARD);
+        cc.setCurrentBalance(BigDecimal.ZERO);
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(cc));
+
+        assertTrue(bankAccountService.isCreditCard(accountId));
+    }
+
+    @Test
+    void isCreditCard_checkingAccount_returnsFalse() {
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+
+        assertFalse(bankAccountService.isCreditCard(accountId));
+    }
+
+    @Test
+    void isCreditCard_nonExistingAccount_throwsEntityNotFoundException() {
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class, () -> bankAccountService.isCreditCard(accountId));
+    }
+
+    // --- create with CREDIT_CARD type ---
+
+    @Test
+    void create_creditCard_returnsSavedDTOWithAccountType() {
+        BankAccountDTO ccDTO = new BankAccountDTO(null, userId, "Visa", "CREDIT_CARD", BigDecimal.ZERO, null);
+
+        BankAccount ccAccount = new BankAccount();
+        ccAccount.setId(accountId);
+        ccAccount.setAppUser(appUser);
+        ccAccount.setName("Visa");
+        ccAccount.setAccountType(AccountType.CREDIT_CARD);
+        ccAccount.setCurrentBalance(BigDecimal.ZERO);
+        ccAccount.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(ccAccount);
+
+        BankAccountDTO result = bankAccountService.create(ccDTO);
+
+        assertNotNull(result);
+        assertEquals("CREDIT_CARD", result.getAccountType());
+        assertEquals("Visa", result.getName());
+        assertEquals(BigDecimal.ZERO, result.getCurrentBalance());
     }
 }

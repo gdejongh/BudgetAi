@@ -26,13 +26,18 @@ public class TransactionDTO {
     @NotNull(message = "Transaction date is required")
     private LocalDate transactionDate;
 
+    private String transactionType;
+
+    private UUID linkedTransactionId;
+
     private ZonedDateTime createdAt;
 
     public TransactionDTO() {
     }
 
     public TransactionDTO(UUID id, UUID appUserId, UUID bankAccountId, UUID envelopeId, BigDecimal amount,
-            String description, LocalDate transactionDate, ZonedDateTime createdAt) {
+            String description, LocalDate transactionDate, String transactionType, UUID linkedTransactionId,
+            ZonedDateTime createdAt) {
         this.id = id;
         this.appUserId = appUserId;
         this.bankAccountId = bankAccountId;
@@ -40,6 +45,8 @@ public class TransactionDTO {
         this.amount = amount;
         this.description = description;
         this.transactionDate = transactionDate;
+        this.transactionType = transactionType;
+        this.linkedTransactionId = linkedTransactionId;
         this.createdAt = createdAt;
     }
 
@@ -97,6 +104,22 @@ public class TransactionDTO {
 
     public void setTransactionDate(LocalDate transactionDate) {
         this.transactionDate = transactionDate;
+    }
+
+    public String getTransactionType() {
+        return transactionType;
+    }
+
+    public void setTransactionType(String transactionType) {
+        this.transactionType = transactionType;
+    }
+
+    public UUID getLinkedTransactionId() {
+        return linkedTransactionId;
+    }
+
+    public void setLinkedTransactionId(UUID linkedTransactionId) {
+        this.linkedTransactionId = linkedTransactionId;
     }
 
     public ZonedDateTime getCreatedAt() {

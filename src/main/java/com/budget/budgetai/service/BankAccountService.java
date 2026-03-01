@@ -1,6 +1,7 @@
 package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.BankAccountDTO;
+import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
@@ -133,6 +134,8 @@ public class BankAccountService {
                 bankAccount.getId(),
                 bankAccount.getAppUser().getId(),
                 bankAccount.getName(),
+                bankAccount.getAccountType() != null ? bankAccount.getAccountType().name()
+                        : AccountType.CHECKING.name(),
                 bankAccount.getCurrentBalance(),
                 bankAccount.getCreatedAt());
     }
@@ -146,6 +149,10 @@ public class BankAccountService {
         bankAccount.setName(bankAccountDTO.getName());
         bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
 
+        if (bankAccountDTO.getAccountType() != null) {
+            bankAccount.setAccountType(AccountType.valueOf(bankAccountDTO.getAccountType()));
+        }
+
         if (bankAccountDTO.getAppUserId() != null) {
             if (!appUserRepository.existsById(bankAccountDTO.getAppUserId())) {
                 throw new EntityNotFoundException("AppUser not found with id: " + bankAccountDTO.getAppUserId());
@@ -154,5 +161,11 @@ public class BankAccountService {
         }
 
         return bankAccount;
+    }
+
+    public boolean isCreditCard(UUID accountId) {
+        BankAccount account = bankAccountRepository.findById(accountId)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + accountId));
+        return account.getAccountType() == AccountType.CREDIT_CARD;
     }
 }

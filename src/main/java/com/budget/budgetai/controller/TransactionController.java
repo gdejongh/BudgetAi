@@ -1,6 +1,7 @@
 package com.budget.budgetai.controller;
 
 import com.budget.budgetai.config.SecurityUtils;
+import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
 import com.budget.budgetai.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -92,5 +93,13 @@ public class TransactionController {
         SecurityUtils.verifyOwnership(existing.getAppUserId());
         transactionService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/cc-payment")
+    @Operation(operationId = "createCCPayment", summary = "Make a credit card payment from a bank account")
+    public ResponseEntity<TransactionDTO> createCCPayment(@Valid @RequestBody CCPaymentRequest request) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        TransactionDTO created = transactionService.createCCPayment(request, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 }
