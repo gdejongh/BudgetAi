@@ -6,6 +6,7 @@ import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.model.EnvelopeCategory;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
@@ -21,6 +22,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.*;
+
+import static org.mockito.ArgumentMatchers.eq;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,6 +43,12 @@ class EnvelopeServiceTest {
 
     @Mock
     private TransactionRepository transactionRepository;
+
+    @Mock
+    private EnvelopeAllocationRepository envelopeAllocationRepository;
+
+    @Mock
+    private EnvelopeAllocationService envelopeAllocationService;
 
     @InjectMocks
     private EnvelopeService envelopeService;
@@ -87,6 +96,7 @@ class EnvelopeServiceTest {
         when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
         when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
         when(envelopeRepository.save(any(Envelope.class))).thenReturn(envelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("500.00"));
 
         EnvelopeDTO result = envelopeService.create(envelopeDTO);
 
@@ -95,6 +105,7 @@ class EnvelopeServiceTest {
         assertEquals("Groceries", result.getName());
         assertEquals(new BigDecimal("500.00"), result.getAllocatedBalance());
         assertEquals(userId, result.getAppUserId());
+        verify(envelopeAllocationService).createInitialAllocation(any(Envelope.class), eq(new BigDecimal("500.00")));
     }
 
     @Test
@@ -144,6 +155,7 @@ class EnvelopeServiceTest {
     @Test
     void getById_found_returnsDTO() {
         when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("500.00"));
 
         EnvelopeDTO result = envelopeService.getById(envelopeId);
 
@@ -164,6 +176,7 @@ class EnvelopeServiceTest {
     @Test
     void getAll_returnsAll() {
         when(envelopeRepository.findAll()).thenReturn(List.of(envelope));
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("500.00"));
 
         List<EnvelopeDTO> result = envelopeService.getAll();
 
@@ -185,6 +198,10 @@ class EnvelopeServiceTest {
     @Test
     void getByAppUserId_withResults_returnsDTOs() {
         when(envelopeRepository.findByAppUserId(userId)).thenReturn(List.of(envelope));
+        List<Object[]> allocRows = new ArrayList<>();
+        allocRows.add(new Object[] { envelopeId, new BigDecimal("500.00") });
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeForUser(userId))
+                .thenReturn(allocRows);
 
         List<EnvelopeDTO> result = envelopeService.getByAppUserId(userId);
 
@@ -195,6 +212,8 @@ class EnvelopeServiceTest {
     @Test
     void getByAppUserId_empty_returnsEmptyList() {
         when(envelopeRepository.findByAppUserId(userId)).thenReturn(Collections.emptyList());
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeForUser(userId))
+                .thenReturn(Collections.emptyList());
 
         List<EnvelopeDTO> result = envelopeService.getByAppUserId(userId);
 
@@ -206,6 +225,10 @@ class EnvelopeServiceTest {
     @Test
     void getByAppUserIdAndName_withResults_returnsDTOs() {
         when(envelopeRepository.findByAppUserIdAndName(userId, "Groceries")).thenReturn(List.of(envelope));
+        List<Object[]> allocRows = new ArrayList<>();
+        allocRows.add(new Object[] { envelopeId, new BigDecimal("500.00") });
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeForUser(userId))
+                .thenReturn(allocRows);
 
         List<EnvelopeDTO> result = envelopeService.getByAppUserIdAndName(userId, "Groceries");
 
@@ -216,6 +239,8 @@ class EnvelopeServiceTest {
     @Test
     void getByAppUserIdAndName_empty_returnsEmptyList() {
         when(envelopeRepository.findByAppUserIdAndName(userId, "NonExistent")).thenReturn(Collections.emptyList());
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeForUser(userId))
+                .thenReturn(Collections.emptyList());
 
         List<EnvelopeDTO> result = envelopeService.getByAppUserIdAndName(userId, "NonExistent");
 
@@ -239,6 +264,7 @@ class EnvelopeServiceTest {
         when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
         when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
         when(envelopeRepository.save(any(Envelope.class))).thenReturn(updatedEnvelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("200.00"));
 
         EnvelopeDTO result = envelopeService.update(envelopeId, updateDTO);
 

@@ -2,8 +2,11 @@ package com.budget.budgetai.controller;
 
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.CreateEnvelopeRequest;
+import com.budget.budgetai.dto.EnvelopeAllocationDTO;
 import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
+import com.budget.budgetai.dto.SetAllocationRequest;
+import com.budget.budgetai.service.EnvelopeAllocationService;
 import com.budget.budgetai.service.EnvelopeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,9 +26,11 @@ import java.util.UUID;
 public class EnvelopeController {
 
     private final EnvelopeService envelopeService;
+    private final EnvelopeAllocationService envelopeAllocationService;
 
-    public EnvelopeController(EnvelopeService envelopeService) {
+    public EnvelopeController(EnvelopeService envelopeService, EnvelopeAllocationService envelopeAllocationService) {
         this.envelopeService = envelopeService;
+        this.envelopeAllocationService = envelopeAllocationService;
     }
 
     @PostMapping
@@ -84,5 +89,34 @@ public class EnvelopeController {
         SecurityUtils.verifyOwnership(existing.getAppUserId());
         envelopeService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // ── Monthly Allocation Endpoints ──────────────────────────────
+
+    @GetMapping("/allocations")
+    @Operation(operationId = "getMonthlyAllocations", summary = "Get all envelope allocations for the current user in a specific month")
+    public ResponseEntity<List<EnvelopeAllocationDTO>> getMonthlyAllocations(
+            @Parameter(description = "Month as yyyy-MM-dd (day is ignored, first-of-month used)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(envelopeAllocationService.getAllocationsForMonth(userId, month));
+    }
+
+    @PutMapping("/{id}/allocation")
+    @Operation(operationId = "setAllocation", summary = "Set the allocation amount for an envelope in a specific month")
+    public ResponseEntity<EnvelopeAllocationDTO> setAllocation(
+            @PathVariable UUID id,
+            @Parameter(description = "Month as yyyy-MM-dd (day is ignored, first-of-month used)") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month,
+            @Valid @RequestBody SetAllocationRequest request) {
+        EnvelopeDTO existing = envelopeService.getById(id);
+        SecurityUtils.verifyOwnership(existing.getAppUserId());
+        return ResponseEntity.ok(envelopeAllocationService.setAllocation(id, month, request.getAmount()));
+    }
+
+    @GetMapping("/{id}/allocations")
+    @Operation(operationId = "getAllocationHistory", summary = "Get the full allocation history for an envelope")
+    public ResponseEntity<List<EnvelopeAllocationDTO>> getAllocationHistory(@PathVariable UUID id) {
+        EnvelopeDTO existing = envelopeService.getById(id);
+        SecurityUtils.verifyOwnership(existing.getAppUserId());
+        return ResponseEntity.ok(envelopeAllocationService.getAllocationHistory(id));
     }
 }
