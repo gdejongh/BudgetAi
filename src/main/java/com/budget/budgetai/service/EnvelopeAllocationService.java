@@ -32,6 +32,9 @@ public class EnvelopeAllocationService {
      * Set (upsert) the allocation for an envelope in a given month.
      */
     public EnvelopeAllocationDTO setAllocation(UUID envelopeId, LocalDate yearMonth, BigDecimal amount) {
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Allocation amount cannot be negative");
+        }
         Envelope envelope = envelopeRepository.findById(envelopeId)
                 .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + envelopeId));
 

@@ -58,6 +58,23 @@ public class TransactionService {
         if (transactionDTO.getBankAccountId() == null) {
             throw new IllegalArgumentException("Bank account ID cannot be null");
         }
+
+        // Ownership check: bank account must belong to this user
+        bankAccountRepository.findById(transactionDTO.getBankAccountId()).ifPresent(account -> {
+            if (!account.getAppUser().getId().equals(transactionDTO.getAppUserId())) {
+                throw new IllegalArgumentException("Bank account does not belong to this user");
+            }
+        });
+
+        // Ownership check: envelope must belong to this user
+        if (transactionDTO.getEnvelopeId() != null) {
+            envelopeRepository.findById(transactionDTO.getEnvelopeId()).ifPresent(env -> {
+                if (!env.getAppUser().getId().equals(transactionDTO.getAppUserId())) {
+                    throw new IllegalArgumentException("Envelope does not belong to this user");
+                }
+            });
+        }
+
         Transaction transaction = toEntity(transactionDTO);
         // For credit cards, invert the balance update: positive balance = debt owed
         // A purchase (negative amount) increases debt; a refund (positive amount)
@@ -135,13 +152,41 @@ public class TransactionService {
         if (transactionDTO == null) {
             throw new IllegalArgumentException("TransactionDTO cannot be null");
         }
+        if (transactionDTO.getAmount() == null) {
+            throw new IllegalArgumentException("Transaction amount cannot be null");
+        }
+        if (transactionDTO.getTransactionDate() == null) {
+            throw new IllegalArgumentException("Transaction date cannot be null");
+        }
 
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
 
+        UUID transactionUserId = transaction.getAppUser().getId();
+
         UUID oldBankAccountId = transaction.getBankAccount() != null ? transaction.getBankAccount().getId() : null;
         UUID newBankAccountId = transactionDTO.getBankAccountId() != null ? transactionDTO.getBankAccountId()
                 : oldBankAccountId;
+
+        // Ownership check: new bank account must belong to this user
+        if (newBankAccountId != null && !newBankAccountId.equals(oldBankAccountId)) {
+            bankAccountRepository.findById(newBankAccountId).ifPresent(account -> {
+                if (!account.getAppUser().getId().equals(transactionUserId)) {
+                    throw new IllegalArgumentException("Bank account does not belong to this user");
+                }
+            });
+        }
+
+        // Ownership check: new envelope must belong to this user
+        UUID newEnvelopeIdForCheck = transactionDTO.getEnvelopeId();
+        UUID oldEnvelopeIdForCheck = transaction.getEnvelope() != null ? transaction.getEnvelope().getId() : null;
+        if (newEnvelopeIdForCheck != null && !newEnvelopeIdForCheck.equals(oldEnvelopeIdForCheck)) {
+            envelopeRepository.findById(newEnvelopeIdForCheck).ifPresent(env -> {
+                if (!env.getAppUser().getId().equals(transactionUserId)) {
+                    throw new IllegalArgumentException("Envelope does not belong to this user");
+                }
+            });
+        }
 
         UUID oldEnvelopeId = transaction.getEnvelope() != null ? transaction.getEnvelope().getId() : null;
         UUID newEnvelopeId = transactionDTO.getEnvelopeId();
@@ -183,19 +228,22 @@ public class TransactionService {
                 && newEnvelopeId != null
                 && newAmount.compareTo(BigDecimal.ZERO) > 0;
 
+        LocalDate oldTransactionMonth = transaction.getTransactionDate().withDayOfMonth(1);
+        LocalDate newTransactionMonth = transactionDTO.getTransactionDate() != null
+                ? transactionDTO.getTransactionDate().withDayOfMonth(1)
+                : oldTransactionMonth;
+
         // Reverse old auto-move for purchases
         if (oldWasCCPurchaseWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(oldBankAccountId).ifPresent(ccEnv -> {
-                LocalDate month = LocalDate.now().withDayOfMonth(1);
-                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, oldAmount.abs().negate());
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), oldTransactionMonth, oldAmount.abs().negate());
             });
         }
 
         // Reverse old refund-move (add back what was subtracted)
         if (oldWasCCRefundWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(oldBankAccountId).ifPresent(ccEnv -> {
-                LocalDate month = LocalDate.now().withDayOfMonth(1);
-                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, oldAmount);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), oldTransactionMonth, oldAmount);
             });
         }
 
@@ -203,16 +251,14 @@ public class TransactionService {
         // remaining)
         if (newIsCCPurchaseWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(newBankAccountId).ifPresent(ccEnv -> {
-                LocalDate month = LocalDate.now().withDayOfMonth(1);
-                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, newAmount.abs());
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), newTransactionMonth, newAmount.abs());
             });
         }
 
         // Apply new refund-move (subtract from CC Payment envelope)
         if (newIsCCRefundWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(newBankAccountId).ifPresent(ccEnv -> {
-                LocalDate month = LocalDate.now().withDayOfMonth(1);
-                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, newAmount.negate());
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), newTransactionMonth, newAmount.negate());
             });
         }
 
@@ -279,8 +325,8 @@ public class TransactionService {
             // Refund deletion: add back what was subtracted from CC Payment envelope
             UUID ccAccountId = transaction.getBankAccount().getId();
             envelopeRepository.findByLinkedAccountId(ccAccountId).ifPresent(ccEnv -> {
-                LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-                envelopeAllocationService.addToAllocation(ccEnv.getId(), currentMonth, transaction.getAmount());
+                LocalDate transactionMonth = transaction.getTransactionDate().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), transactionMonth, transaction.getAmount());
             });
         }
 
@@ -306,9 +352,9 @@ public class TransactionService {
         // Purchase amount is negative; take absolute value
         BigDecimal purchaseAmount = transaction.getAmount().abs();
 
-        // Increase the CC Payment envelope's allocation for the current month
-        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, purchaseAmount);
+        // Increase the CC Payment envelope's allocation for the transaction's month
+        LocalDate transactionMonth = transaction.getTransactionDate().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), transactionMonth, purchaseAmount);
     }
 
     /**
@@ -324,8 +370,8 @@ public class TransactionService {
         }
 
         BigDecimal refundAmount = transaction.getAmount(); // positive
-        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, refundAmount.negate());
+        LocalDate transactionMonth = transaction.getTransactionDate().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), transactionMonth, refundAmount.negate());
     }
 
     /**
@@ -341,8 +387,8 @@ public class TransactionService {
         }
 
         BigDecimal purchaseAmount = transaction.getAmount().abs();
-        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, purchaseAmount.negate());
+        LocalDate transactionMonth = transaction.getTransactionDate().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), transactionMonth, purchaseAmount.negate());
     }
 
     private void adjustBankAccountBalance(UUID oldAccountId, UUID newAccountId,
@@ -441,8 +487,8 @@ public class TransactionService {
 
         // Decrease CC Payment envelope allocation by the payment amount
         envelopeRepository.findByLinkedAccountId(request.getCreditCardId()).ifPresent(ccPaymentEnvelope -> {
-            LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-            envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth,
+            LocalDate paymentMonth = request.getTransactionDate().withDayOfMonth(1);
+            envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), paymentMonth,
                     request.getAmount().negate());
         });
 

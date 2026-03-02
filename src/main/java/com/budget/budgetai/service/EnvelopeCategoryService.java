@@ -39,6 +39,14 @@ public class EnvelopeCategoryService {
         if (dto.getAppUserId() == null) {
             throw new IllegalArgumentException("App user ID cannot be null");
         }
+
+        // Duplicate name check (per user)
+        List<EnvelopeCategory> existing = envelopeCategoryRepository.findByAppUserIdAndName(
+                dto.getAppUserId(), dto.getName());
+        if (!existing.isEmpty()) {
+            throw new IllegalArgumentException("A category with this name already exists");
+        }
+
         EnvelopeCategory category = toEntity(dto);
         EnvelopeCategory saved = envelopeCategoryRepository.save(category);
         return toDTO(saved);
@@ -66,8 +74,20 @@ public class EnvelopeCategoryService {
         if (dto == null) {
             throw new IllegalArgumentException("EnvelopeCategoryDTO cannot be null");
         }
+        if (dto.getName() == null || dto.getName().isBlank()) {
+            throw new IllegalArgumentException("Category name cannot be null or empty");
+        }
         EnvelopeCategory category = envelopeCategoryRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Envelope category not found with id: " + id));
+
+        // Duplicate name check (per user, excluding self)
+        List<EnvelopeCategory> existing = envelopeCategoryRepository.findByAppUserIdAndName(
+                category.getAppUser().getId(), dto.getName());
+        boolean duplicateExists = existing.stream().anyMatch(c -> !c.getId().equals(id));
+        if (duplicateExists) {
+            throw new IllegalArgumentException("A category with this name already exists");
+        }
+
         category.setName(dto.getName());
         EnvelopeCategory updated = envelopeCategoryRepository.save(category);
         return toDTO(updated);

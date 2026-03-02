@@ -248,4 +248,72 @@ class EnvelopeCategoryServiceTest {
         assertThrows(EntityNotFoundException.class,
                 () -> envelopeCategoryService.seedDefaultCategories(userId));
     }
+
+    // --- update validation ---
+
+    @Test
+    void update_withBlankName_throwsIllegalArgument() {
+        EnvelopeCategoryDTO dto = new EnvelopeCategoryDTO();
+        dto.setName("  ");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeCategoryService.update(categoryId, dto));
+        assertEquals("Category name cannot be null or empty", ex.getMessage());
+    }
+
+    @Test
+    void update_withNullName_throwsIllegalArgument() {
+        EnvelopeCategoryDTO dto = new EnvelopeCategoryDTO();
+        dto.setName(null);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeCategoryService.update(categoryId, dto));
+        assertEquals("Category name cannot be null or empty", ex.getMessage());
+    }
+
+    // --- duplicate name ---
+
+    @Test
+    void create_withDuplicateName_throwsIllegalArgument() {
+        EnvelopeCategory existingCategory = new EnvelopeCategory();
+        existingCategory.setId(UUID.randomUUID());
+        existingCategory.setName("Bills");
+        when(envelopeCategoryRepository.findByAppUserIdAndName(userId, "Bills"))
+                .thenReturn(List.of(existingCategory));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeCategoryService.create(categoryDTO));
+        assertEquals("A category with this name already exists", ex.getMessage());
+    }
+
+    @Test
+    void update_withDuplicateName_throwsIllegalArgument() {
+        EnvelopeCategoryDTO dto = new EnvelopeCategoryDTO();
+        dto.setName("Savings");
+
+        when(envelopeCategoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+
+        EnvelopeCategory otherCategory = new EnvelopeCategory();
+        otherCategory.setId(UUID.randomUUID());
+        otherCategory.setName("Savings");
+        when(envelopeCategoryRepository.findByAppUserIdAndName(userId, "Savings"))
+                .thenReturn(List.of(otherCategory));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeCategoryService.update(categoryId, dto));
+        assertEquals("A category with this name already exists", ex.getMessage());
+    }
+
+    @Test
+    void update_withSameNameAsSelf_succeeds() {
+        EnvelopeCategoryDTO dto = new EnvelopeCategoryDTO();
+        dto.setName("Bills");
+
+        when(envelopeCategoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(envelopeCategoryRepository.findByAppUserIdAndName(userId, "Bills"))
+                .thenReturn(List.of(category));
+        when(envelopeCategoryRepository.save(any(EnvelopeCategory.class))).thenReturn(category);
+
+        EnvelopeCategoryDTO result = envelopeCategoryService.update(categoryId, dto);
+        assertNotNull(result);
+        assertEquals("Bills", result.getName());
+    }
 }

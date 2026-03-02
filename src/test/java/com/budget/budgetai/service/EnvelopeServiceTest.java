@@ -497,4 +497,94 @@ class EnvelopeServiceTest {
         assertEquals(new BigDecimal("10000.00"), result.getGoalAmount());
         assertEquals(LocalDate.of(2030, 1, 1), result.getGoalTargetDate());
     }
+
+    // --- update validation ---
+
+    @Test
+    void update_withBlankName_throwsIllegalArgument() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName("  ");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.update(envelopeId, dto));
+        assertEquals("Envelope name cannot be null or empty", ex.getMessage());
+    }
+
+    @Test
+    void update_withNullName_throwsIllegalArgument() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName(null);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.update(envelopeId, dto));
+        assertEquals("Envelope name cannot be null or empty", ex.getMessage());
+    }
+
+    @Test
+    void update_withNegativeGoalAmount_throwsIllegalArgument() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName("Valid");
+        dto.setGoalAmount(new BigDecimal("-100.00"));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.update(envelopeId, dto));
+        assertEquals("Goal amount must be greater than zero", ex.getMessage());
+    }
+
+    @Test
+    void update_withZeroMonthlyGoalTarget_throwsIllegalArgument() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName("Valid");
+        dto.setMonthlyGoalTarget(BigDecimal.ZERO);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.update(envelopeId, dto));
+        assertEquals("Monthly goal target must be greater than zero", ex.getMessage());
+    }
+
+    // --- duplicate name ---
+
+    @Test
+    void create_withDuplicateName_throwsIllegalArgument() {
+        Envelope existingEnvelope = new Envelope();
+        existingEnvelope.setId(UUID.randomUUID());
+        existingEnvelope.setName("Groceries");
+        when(envelopeRepository.findByAppUserIdAndName(userId, "Groceries"))
+                .thenReturn(List.of(existingEnvelope));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.create(envelopeDTO));
+        assertEquals("An envelope with this name already exists", ex.getMessage());
+    }
+
+    @Test
+    void update_withDuplicateName_throwsIllegalArgument() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName("Rent");
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+
+        Envelope otherEnvelope = new Envelope();
+        otherEnvelope.setId(UUID.randomUUID());
+        otherEnvelope.setName("Rent");
+        when(envelopeRepository.findByAppUserIdAndName(userId, "Rent"))
+                .thenReturn(List.of(otherEnvelope));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> envelopeService.update(envelopeId, dto));
+        assertEquals("An envelope with this name already exists", ex.getMessage());
+    }
+
+    @Test
+    void update_withSameNameAsSelf_succeeds() {
+        EnvelopeDTO dto = new EnvelopeDTO();
+        dto.setName("Groceries");
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeRepository.findByAppUserIdAndName(userId, "Groceries"))
+                .thenReturn(List.of(envelope));
+        when(envelopeRepository.save(any(Envelope.class))).thenReturn(envelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId))
+                .thenReturn(new BigDecimal("500.00"));
+
+        EnvelopeDTO result = envelopeService.update(envelopeId, dto);
+        assertNotNull(result);
+        assertEquals("Groceries", result.getName());
+    }
 }

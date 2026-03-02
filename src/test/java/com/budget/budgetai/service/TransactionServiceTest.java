@@ -868,7 +868,7 @@ class TransactionServiceTest {
         // by remaining
         verify(envelopeAllocationService).addToAllocation(
                 eq(ccPaymentEnvelopeId),
-                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(LocalDate.of(2026, 3, 1)),
                 eq(new BigDecimal("50.00")));
     }
 
@@ -954,7 +954,7 @@ class TransactionServiceTest {
         // Refund of +25: CC Payment envelope should decrease by 25 (less cash needed)
         verify(envelopeAllocationService).addToAllocation(
                 eq(ccPaymentEnvelopeId),
-                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(LocalDate.of(2026, 3, 1)),
                 eq(new BigDecimal("-25.00")));
         // CC balance should decrease (refund reduces debt): +25 negated = -25
         verify(bankAccountService).updateBalance(ccId, new BigDecimal("-25.00"));
@@ -1051,7 +1051,88 @@ class TransactionServiceTest {
         // $20
         verify(envelopeAllocationService).addToAllocation(
                 eq(ccPaymentEnvelopeId),
-                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(LocalDate.of(2026, 3, 1)),
                 eq(new BigDecimal("50.00")));
+    }
+
+    // --- IDOR: cross-user authorization ---
+
+    @Test
+    void create_withBankAccountBelongingToAnotherUser_throwsIllegalArgument() {
+        UUID otherUserId = UUID.randomUUID();
+        AppUser otherUser = new AppUser();
+        otherUser.setId(otherUserId);
+
+        BankAccount otherAccount = new BankAccount();
+        otherAccount.setId(bankAccountId);
+        otherAccount.setAppUser(otherUser);
+
+        when(bankAccountRepository.findById(bankAccountId)).thenReturn(Optional.of(otherAccount));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> transactionService.create(transactionDTO));
+        assertEquals("Bank account does not belong to this user", ex.getMessage());
+    }
+
+    @Test
+    void create_withEnvelopeBelongingToAnotherUser_throwsIllegalArgument() {
+        UUID otherUserId = UUID.randomUUID();
+        AppUser otherUser = new AppUser();
+        otherUser.setId(otherUserId);
+
+        Envelope otherEnvelope = new Envelope();
+        otherEnvelope.setId(envelopeId);
+        otherEnvelope.setAppUser(otherUser);
+
+        when(bankAccountRepository.findById(bankAccountId)).thenReturn(Optional.of(bankAccount));
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(otherEnvelope));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> transactionService.create(transactionDTO));
+        assertEquals("Envelope does not belong to this user", ex.getMessage());
+    }
+
+    @Test
+    void update_withBankAccountBelongingToAnotherUser_throwsIllegalArgument() {
+        UUID otherUserId = UUID.randomUUID();
+        AppUser otherUser = new AppUser();
+        otherUser.setId(otherUserId);
+
+        UUID newAccountId = UUID.randomUUID();
+        BankAccount otherAccount = new BankAccount();
+        otherAccount.setId(newAccountId);
+        otherAccount.setAppUser(otherUser);
+
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, newAccountId, null,
+                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 20), null, null, null);
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(bankAccountRepository.findById(newAccountId)).thenReturn(Optional.of(otherAccount));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> transactionService.update(transactionId, updateDTO));
+        assertEquals("Bank account does not belong to this user", ex.getMessage());
+    }
+
+    @Test
+    void update_withEnvelopeBelongingToAnotherUser_throwsIllegalArgument() {
+        UUID otherUserId = UUID.randomUUID();
+        AppUser otherUser = new AppUser();
+        otherUser.setId(otherUserId);
+
+        UUID newEnvelopeId = UUID.randomUUID();
+        Envelope otherEnvelope = new Envelope();
+        otherEnvelope.setId(newEnvelopeId);
+        otherEnvelope.setAppUser(otherUser);
+
+        TransactionDTO updateDTO = new TransactionDTO(null, userId, bankAccountId, newEnvelopeId,
+                new BigDecimal("50.00"), "Test", LocalDate.of(2026, 2, 20), null, null, null);
+
+        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(envelopeRepository.findById(newEnvelopeId)).thenReturn(Optional.of(otherEnvelope));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> transactionService.update(transactionId, updateDTO));
+        assertEquals("Envelope does not belong to this user", ex.getMessage());
     }
 }

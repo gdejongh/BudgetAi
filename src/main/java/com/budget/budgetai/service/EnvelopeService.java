@@ -62,6 +62,14 @@ public class EnvelopeService {
         if (envelopeDTO.getEnvelopeCategoryId() == null) {
             throw new IllegalArgumentException("Envelope category ID cannot be null");
         }
+
+        // Duplicate name check (per user)
+        List<Envelope> existing = envelopeRepository.findByAppUserIdAndName(
+                envelopeDTO.getAppUserId(), envelopeDTO.getName());
+        if (!existing.isEmpty()) {
+            throw new IllegalArgumentException("An envelope with this name already exists");
+        }
+
         Envelope envelope = toEntity(envelopeDTO);
         Envelope savedEnvelope = envelopeRepository.save(envelope);
 
@@ -132,8 +140,27 @@ public class EnvelopeService {
         if (envelopeDTO == null) {
             throw new IllegalArgumentException("EnvelopeDTO cannot be null");
         }
+        if (envelopeDTO.getName() == null || envelopeDTO.getName().isBlank()) {
+            throw new IllegalArgumentException("Envelope name cannot be null or empty");
+        }
+        if (envelopeDTO.getGoalAmount() != null && envelopeDTO.getGoalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Goal amount must be greater than zero");
+        }
+        if (envelopeDTO.getMonthlyGoalTarget() != null
+                && envelopeDTO.getMonthlyGoalTarget().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Monthly goal target must be greater than zero");
+        }
         Envelope envelope = envelopeRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
+
+        // Duplicate name check (per user, excluding self)
+        List<Envelope> existing = envelopeRepository.findByAppUserIdAndName(
+                envelope.getAppUser().getId(), envelopeDTO.getName());
+        boolean duplicateExists = existing.stream().anyMatch(e -> !e.getId().equals(id));
+        if (duplicateExists) {
+            throw new IllegalArgumentException("An envelope with this name already exists");
+        }
+
         envelope.setName(envelopeDTO.getName());
         // Note: allocatedBalance is now managed via the envelope_allocation table.
         // The entity's allocatedBalance field is kept for backward compatibility but
