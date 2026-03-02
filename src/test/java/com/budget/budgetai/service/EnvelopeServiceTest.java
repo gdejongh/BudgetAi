@@ -353,4 +353,148 @@ class EnvelopeServiceTest {
 
         assertTrue(result.isEmpty());
     }
+
+    // --- savings goal ---
+
+    @Test
+    void update_withMonthlyGoal_persistsGoalFields() {
+        EnvelopeDTO updateDTO = new EnvelopeDTO(null, userId, categoryId, "Groceries", new BigDecimal("0.00"),
+                null, null, null, new BigDecimal("200.00"),
+                null, "MONTHLY", null);
+
+        Envelope updatedEnvelope = new Envelope();
+        updatedEnvelope.setId(envelopeId);
+        updatedEnvelope.setAppUser(appUser);
+        updatedEnvelope.setEnvelopeCategory(envelopeCategory);
+        updatedEnvelope.setName("Groceries");
+        updatedEnvelope.setAllocatedBalance(new BigDecimal("0.00"));
+        updatedEnvelope.setMonthlyGoalTarget(new BigDecimal("200.00"));
+        updatedEnvelope.setGoalType("MONTHLY");
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
+        when(envelopeRepository.save(any(Envelope.class))).thenReturn(updatedEnvelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("0.00"));
+
+        EnvelopeDTO result = envelopeService.update(envelopeId, updateDTO);
+
+        assertNotNull(result);
+        assertEquals("MONTHLY", result.getGoalType());
+        assertEquals(new BigDecimal("200.00"), result.getMonthlyGoalTarget());
+        assertNull(result.getGoalAmount());
+        assertNull(result.getGoalTargetDate());
+    }
+
+    @Test
+    void update_withTargetGoal_persistsGoalFields() {
+        EnvelopeDTO updateDTO = new EnvelopeDTO(null, userId, categoryId, "New Car", new BigDecimal("0.00"),
+                null, null, new BigDecimal("10000.00"), null,
+                LocalDate.of(2030, 1, 1), "TARGET", null);
+
+        Envelope updatedEnvelope = new Envelope();
+        updatedEnvelope.setId(envelopeId);
+        updatedEnvelope.setAppUser(appUser);
+        updatedEnvelope.setEnvelopeCategory(envelopeCategory);
+        updatedEnvelope.setName("New Car");
+        updatedEnvelope.setAllocatedBalance(new BigDecimal("0.00"));
+        updatedEnvelope.setGoalAmount(new BigDecimal("10000.00"));
+        updatedEnvelope.setGoalTargetDate(LocalDate.of(2030, 1, 1));
+        updatedEnvelope.setGoalType("TARGET");
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
+        when(envelopeRepository.save(any(Envelope.class))).thenReturn(updatedEnvelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("0.00"));
+
+        EnvelopeDTO result = envelopeService.update(envelopeId, updateDTO);
+
+        assertNotNull(result);
+        assertEquals("TARGET", result.getGoalType());
+        assertEquals(new BigDecimal("10000.00"), result.getGoalAmount());
+        assertEquals(LocalDate.of(2030, 1, 1), result.getGoalTargetDate());
+        assertNull(result.getMonthlyGoalTarget());
+    }
+
+    @Test
+    void update_clearSavingsGoal_setsGoalFieldsToNull() {
+        // Start with goal fields set
+        envelope.setGoalAmount(new BigDecimal("10000.00"));
+        envelope.setMonthlyGoalTarget(new BigDecimal("200.00"));
+        envelope.setGoalTargetDate(LocalDate.of(2030, 1, 1));
+        envelope.setGoalType("TARGET");
+
+        EnvelopeDTO updateDTO = new EnvelopeDTO(null, userId, categoryId, "New Car", new BigDecimal("0.00"),
+                null, null, null, null, null, null, null);
+
+        Envelope updatedEnvelope = new Envelope();
+        updatedEnvelope.setId(envelopeId);
+        updatedEnvelope.setAppUser(appUser);
+        updatedEnvelope.setEnvelopeCategory(envelopeCategory);
+        updatedEnvelope.setName("New Car");
+        updatedEnvelope.setAllocatedBalance(new BigDecimal("0.00"));
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
+        when(envelopeRepository.save(any(Envelope.class))).thenReturn(updatedEnvelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("0.00"));
+
+        EnvelopeDTO result = envelopeService.update(envelopeId, updateDTO);
+
+        assertNotNull(result);
+        assertNull(result.getGoalType());
+        assertNull(result.getGoalAmount());
+        assertNull(result.getMonthlyGoalTarget());
+        assertNull(result.getGoalTargetDate());
+    }
+
+    @Test
+    void create_withTargetGoal_returnsDTOWithGoalFields() {
+        EnvelopeDTO createDTO = new EnvelopeDTO(null, userId, categoryId, "Vacation", new BigDecimal("100.00"),
+                null, null, new BigDecimal("5000.00"), null,
+                LocalDate.of(2028, 6, 1), "TARGET", null);
+
+        Envelope savedEnvelope = new Envelope();
+        savedEnvelope.setId(envelopeId);
+        savedEnvelope.setAppUser(appUser);
+        savedEnvelope.setEnvelopeCategory(envelopeCategory);
+        savedEnvelope.setName("Vacation");
+        savedEnvelope.setAllocatedBalance(new BigDecimal("100.00"));
+        savedEnvelope.setGoalAmount(new BigDecimal("5000.00"));
+        savedEnvelope.setGoalTargetDate(LocalDate.of(2028, 6, 1));
+        savedEnvelope.setGoalType("TARGET");
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.getReferenceById(categoryId)).thenReturn(envelopeCategory);
+        when(envelopeRepository.save(any(Envelope.class))).thenReturn(savedEnvelope);
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("100.00"));
+
+        EnvelopeDTO result = envelopeService.create(createDTO);
+
+        assertNotNull(result);
+        assertEquals("TARGET", result.getGoalType());
+        assertEquals(new BigDecimal("5000.00"), result.getGoalAmount());
+        assertEquals(LocalDate.of(2028, 6, 1), result.getGoalTargetDate());
+    }
+
+    @Test
+    void getById_withSavingsGoal_returnsGoalFields() {
+        envelope.setGoalAmount(new BigDecimal("10000.00"));
+        envelope.setGoalTargetDate(LocalDate.of(2030, 1, 1));
+        envelope.setGoalType("TARGET");
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("500.00"));
+
+        EnvelopeDTO result = envelopeService.getById(envelopeId);
+
+        assertNotNull(result);
+        assertEquals("TARGET", result.getGoalType());
+        assertEquals(new BigDecimal("10000.00"), result.getGoalAmount());
+        assertEquals(LocalDate.of(2030, 1, 1), result.getGoalTargetDate());
+    }
 }

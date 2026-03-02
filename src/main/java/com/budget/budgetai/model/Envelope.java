@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
@@ -38,6 +39,18 @@ public class Envelope {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "linked_account_id")
     private BankAccount linkedAccount;
+
+    @Column(name = "goal_amount", precision = 19, scale = 2)
+    private BigDecimal goalAmount;
+
+    @Column(name = "monthly_goal_target", precision = 19, scale = 2)
+    private BigDecimal monthlyGoalTarget;
+
+    @Column(name = "goal_target_date")
+    private LocalDate goalTargetDate;
+
+    @Column(name = "goal_type", length = 20)
+    private String goalType;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;

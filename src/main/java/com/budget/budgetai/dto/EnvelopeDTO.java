@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
@@ -26,6 +27,14 @@ public class EnvelopeDTO {
     private String envelopeType;
 
     private UUID linkedAccountId;
+
+    private BigDecimal goalAmount;
+
+    private BigDecimal monthlyGoalTarget;
+
+    private LocalDate goalTargetDate;
+
+    private String goalType;
 
     private ZonedDateTime createdAt;
 
@@ -51,6 +60,23 @@ public class EnvelopeDTO {
         this.allocatedBalance = allocatedBalance;
         this.envelopeType = envelopeType;
         this.linkedAccountId = linkedAccountId;
+        this.createdAt = createdAt;
+    }
+
+    public EnvelopeDTO(UUID id, UUID appUserId, UUID envelopeCategoryId, String name, BigDecimal allocatedBalance,
+            String envelopeType, UUID linkedAccountId, BigDecimal goalAmount, BigDecimal monthlyGoalTarget,
+            LocalDate goalTargetDate, String goalType, ZonedDateTime createdAt) {
+        this.id = id;
+        this.appUserId = appUserId;
+        this.envelopeCategoryId = envelopeCategoryId;
+        this.name = name;
+        this.allocatedBalance = allocatedBalance;
+        this.envelopeType = envelopeType;
+        this.linkedAccountId = linkedAccountId;
+        this.goalAmount = goalAmount;
+        this.monthlyGoalTarget = monthlyGoalTarget;
+        this.goalTargetDate = goalTargetDate;
+        this.goalType = goalType;
         this.createdAt = createdAt;
     }
 
@@ -108,6 +134,38 @@ public class EnvelopeDTO {
 
     public void setLinkedAccountId(UUID linkedAccountId) {
         this.linkedAccountId = linkedAccountId;
+    }
+
+    public BigDecimal getGoalAmount() {
+        return goalAmount;
+    }
+
+    public void setGoalAmount(BigDecimal goalAmount) {
+        this.goalAmount = goalAmount;
+    }
+
+    public BigDecimal getMonthlyGoalTarget() {
+        return monthlyGoalTarget;
+    }
+
+    public void setMonthlyGoalTarget(BigDecimal monthlyGoalTarget) {
+        this.monthlyGoalTarget = monthlyGoalTarget;
+    }
+
+    public LocalDate getGoalTargetDate() {
+        return goalTargetDate;
+    }
+
+    public void setGoalTargetDate(LocalDate goalTargetDate) {
+        this.goalTargetDate = goalTargetDate;
+    }
+
+    public String getGoalType() {
+        return goalType;
+    }
+
+    public void setGoalType(String goalType) {
+        this.goalType = goalType;
     }
 
     public ZonedDateTime getCreatedAt() {

@@ -146,6 +146,11 @@ public class EnvelopeService {
             envelope.setEnvelopeCategory(
                     envelopeCategoryRepository.getReferenceById(envelopeDTO.getEnvelopeCategoryId()));
         }
+        // Update savings goal fields (nullable — null clears the goal)
+        envelope.setGoalAmount(envelopeDTO.getGoalAmount());
+        envelope.setMonthlyGoalTarget(envelopeDTO.getMonthlyGoalTarget());
+        envelope.setGoalTargetDate(envelopeDTO.getGoalTargetDate());
+        envelope.setGoalType(envelopeDTO.getGoalType());
         Envelope updatedEnvelope = envelopeRepository.save(envelope);
         return toDTO(updatedEnvelope);
     }
@@ -187,6 +192,10 @@ public class EnvelopeService {
                 totalAllocated,
                 envelope.getEnvelopeType() != null ? envelope.getEnvelopeType().name() : EnvelopeType.STANDARD.name(),
                 envelope.getLinkedAccount() != null ? envelope.getLinkedAccount().getId() : null,
+                envelope.getGoalAmount(),
+                envelope.getMonthlyGoalTarget(),
+                envelope.getGoalTargetDate(),
+                envelope.getGoalType(),
                 envelope.getCreatedAt());
     }
 
@@ -205,6 +214,10 @@ public class EnvelopeService {
                 totalAllocated,
                 envelope.getEnvelopeType() != null ? envelope.getEnvelopeType().name() : EnvelopeType.STANDARD.name(),
                 envelope.getLinkedAccount() != null ? envelope.getLinkedAccount().getId() : null,
+                envelope.getGoalAmount(),
+                envelope.getMonthlyGoalTarget(),
+                envelope.getGoalTargetDate(),
+                envelope.getGoalType(),
                 envelope.getCreatedAt());
     }
 
@@ -220,6 +233,12 @@ public class EnvelopeService {
         if (envelopeDTO.getEnvelopeType() != null) {
             envelope.setEnvelopeType(EnvelopeType.valueOf(envelopeDTO.getEnvelopeType()));
         }
+
+        // Map savings goal fields
+        envelope.setGoalAmount(envelopeDTO.getGoalAmount());
+        envelope.setMonthlyGoalTarget(envelopeDTO.getMonthlyGoalTarget());
+        envelope.setGoalTargetDate(envelopeDTO.getGoalTargetDate());
+        envelope.setGoalType(envelopeDTO.getGoalType());
 
         if (envelopeDTO.getLinkedAccountId() != null) {
             if (!bankAccountRepository.existsById(envelopeDTO.getLinkedAccountId())) {
