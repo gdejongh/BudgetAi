@@ -819,4 +819,239 @@ class TransactionServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> transactionService.createCCPayment(request, userId));
     }
+
+    // --- Credit Card Auto-Move Tests ---
+
+    @Test
+    void create_ccPurchaseWithEnvelope_movesFullAmountToCCPaymentEnvelope() {
+        UUID ccId = UUID.randomUUID();
+        UUID ccPaymentEnvelopeId = UUID.randomUUID();
+
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(BigDecimal.ZERO);
+
+        Envelope ccPaymentEnvelope = new Envelope();
+        ccPaymentEnvelope.setId(ccPaymentEnvelopeId);
+        ccPaymentEnvelope.setAppUser(appUser);
+        ccPaymentEnvelope.setName("Visa Payment");
+
+        TransactionDTO ccDTO = new TransactionDTO(null, userId, ccId, envelopeId,
+                new BigDecimal("-50.00"), "Grocery purchase", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction ccTx = new Transaction();
+        ccTx.setId(UUID.randomUUID());
+        ccTx.setAppUser(appUser);
+        ccTx.setBankAccount(creditCard);
+        ccTx.setEnvelope(envelope);
+        ccTx.setAmount(new BigDecimal("-50.00"));
+        ccTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        ccTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(ccTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+        when(envelopeRepository.findByLinkedAccountId(ccId)).thenReturn(Optional.of(ccPaymentEnvelope));
+
+        transactionService.create(ccDTO);
+
+        // Full purchase amount (50) should be added to CC Payment envelope, not capped
+        // by remaining
+        verify(envelopeAllocationService).addToAllocation(
+                eq(ccPaymentEnvelopeId),
+                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(new BigDecimal("50.00")));
+    }
+
+    @Test
+    void create_ccPurchaseWithoutEnvelope_doesNotMoveToCCPaymentEnvelope() {
+        UUID ccId = UUID.randomUUID();
+
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(BigDecimal.ZERO);
+
+        TransactionDTO ccDTO = new TransactionDTO(null, userId, ccId, null,
+                new BigDecimal("-50.00"), "Unassigned purchase", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction ccTx = new Transaction();
+        ccTx.setId(UUID.randomUUID());
+        ccTx.setAppUser(appUser);
+        ccTx.setBankAccount(creditCard);
+        ccTx.setEnvelope(null);
+        ccTx.setAmount(new BigDecimal("-50.00"));
+        ccTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        ccTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(ccTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
+        transactionService.create(ccDTO);
+
+        // No auto-move should happen when no envelope is assigned
+        verify(envelopeAllocationService, never()).addToAllocation(any(), any(), any());
+    }
+
+    @Test
+    void create_ccRefundWithEnvelope_decrementsCCPaymentEnvelope() {
+        UUID ccId = UUID.randomUUID();
+        UUID ccPaymentEnvelopeId = UUID.randomUUID();
+
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(new BigDecimal("100.00"));
+
+        Envelope ccPaymentEnvelope = new Envelope();
+        ccPaymentEnvelope.setId(ccPaymentEnvelopeId);
+        ccPaymentEnvelope.setAppUser(appUser);
+        ccPaymentEnvelope.setName("Visa Payment");
+
+        TransactionDTO refundDTO = new TransactionDTO(null, userId, ccId, envelopeId,
+                new BigDecimal("25.00"), "Refund", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction refundTx = new Transaction();
+        refundTx.setId(UUID.randomUUID());
+        refundTx.setAppUser(appUser);
+        refundTx.setBankAccount(creditCard);
+        refundTx.setEnvelope(envelope);
+        refundTx.setAmount(new BigDecimal("25.00"));
+        refundTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        refundTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(envelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(refundTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+        when(envelopeRepository.findByLinkedAccountId(ccId)).thenReturn(Optional.of(ccPaymentEnvelope));
+
+        transactionService.create(refundDTO);
+
+        // Refund of +25: CC Payment envelope should decrease by 25 (less cash needed)
+        verify(envelopeAllocationService).addToAllocation(
+                eq(ccPaymentEnvelopeId),
+                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(new BigDecimal("-25.00")));
+        // CC balance should decrease (refund reduces debt): +25 negated = -25
+        verify(bankAccountService).updateBalance(ccId, new BigDecimal("-25.00"));
+    }
+
+    @Test
+    void create_ccRefundWithoutEnvelope_doesNotChangeCCPaymentEnvelope() {
+        UUID ccId = UUID.randomUUID();
+
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(new BigDecimal("100.00"));
+
+        TransactionDTO refundDTO = new TransactionDTO(null, userId, ccId, null,
+                new BigDecimal("25.00"), "Unassigned refund", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction refundTx = new Transaction();
+        refundTx.setId(UUID.randomUUID());
+        refundTx.setAppUser(appUser);
+        refundTx.setBankAccount(creditCard);
+        refundTx.setEnvelope(null);
+        refundTx.setAmount(new BigDecimal("25.00"));
+        refundTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        refundTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(refundTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+
+        transactionService.create(refundDTO);
+
+        // No CC Payment envelope adjustment for unassigned refunds
+        verify(envelopeAllocationService, never()).addToAllocation(any(), any(), any());
+    }
+
+    @Test
+    void create_overspentEnvelope_fullAmountStillMovedToCCPayment() {
+        UUID ccId = UUID.randomUUID();
+        UUID ccPaymentEnvelopeId = UUID.randomUUID();
+
+        BankAccount creditCard = new BankAccount();
+        creditCard.setId(ccId);
+        creditCard.setAppUser(appUser);
+        creditCard.setName("Visa");
+        creditCard.setAccountType(AccountType.CREDIT_CARD);
+        creditCard.setCurrentBalance(BigDecimal.ZERO);
+
+        // Spending envelope with only $20 remaining
+        Envelope spendingEnvelope = new Envelope();
+        spendingEnvelope.setId(envelopeId);
+        spendingEnvelope.setAppUser(appUser);
+        spendingEnvelope.setName("Groceries");
+        spendingEnvelope.setAllocatedBalance(new BigDecimal("20.00"));
+
+        Envelope ccPaymentEnvelope = new Envelope();
+        ccPaymentEnvelope.setId(ccPaymentEnvelopeId);
+        ccPaymentEnvelope.setAppUser(appUser);
+        ccPaymentEnvelope.setName("Visa Payment");
+
+        // Purchase for $50 (exceeds envelope's $20 remaining)
+        TransactionDTO ccDTO = new TransactionDTO(null, userId, ccId, envelopeId,
+                new BigDecimal("-50.00"), "Big grocery purchase", LocalDate.of(2026, 3, 1), null, null, null);
+
+        Transaction ccTx = new Transaction();
+        ccTx.setId(UUID.randomUUID());
+        ccTx.setAppUser(appUser);
+        ccTx.setBankAccount(creditCard);
+        ccTx.setEnvelope(spendingEnvelope);
+        ccTx.setAmount(new BigDecimal("-50.00"));
+        ccTx.setTransactionDate(LocalDate.of(2026, 3, 1));
+        ccTx.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.existsById(ccId)).thenReturn(true);
+        when(bankAccountRepository.getReferenceById(ccId)).thenReturn(creditCard);
+        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.getReferenceById(envelopeId)).thenReturn(spendingEnvelope);
+        when(transactionRepository.save(any(Transaction.class))).thenReturn(ccTx);
+        when(bankAccountService.isCreditCard(ccId)).thenReturn(true);
+        doNothing().when(bankAccountService).updateBalance(any(UUID.class), any(BigDecimal.class));
+        when(envelopeRepository.findByLinkedAccountId(ccId)).thenReturn(Optional.of(ccPaymentEnvelope));
+
+        transactionService.create(ccDTO);
+
+        // Full $50 should be moved to CC Payment envelope even though envelope only had
+        // $20
+        verify(envelopeAllocationService).addToAllocation(
+                eq(ccPaymentEnvelopeId),
+                eq(LocalDate.now().withDayOfMonth(1)),
+                eq(new BigDecimal("50.00")));
+    }
 }

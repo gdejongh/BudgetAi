@@ -2,14 +2,11 @@ package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
-import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.Envelope;
-import com.budget.budgetai.model.EnvelopeType;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.model.TransactionType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
-import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -30,20 +27,17 @@ public class TransactionService {
     private final AppUserRepository appUserRepository;
     private final BankAccountRepository bankAccountRepository;
     private final EnvelopeRepository envelopeRepository;
-    private final EnvelopeAllocationRepository envelopeAllocationRepository;
     private final BankAccountService bankAccountService;
     private final EnvelopeAllocationService envelopeAllocationService;
 
     public TransactionService(TransactionRepository transactionRepository, AppUserRepository appUserRepository,
             BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository,
-            EnvelopeAllocationRepository envelopeAllocationRepository,
             BankAccountService bankAccountService,
             EnvelopeAllocationService envelopeAllocationService) {
         this.transactionRepository = transactionRepository;
         this.appUserRepository = appUserRepository;
         this.bankAccountRepository = bankAccountRepository;
         this.envelopeRepository = envelopeRepository;
-        this.envelopeAllocationRepository = envelopeAllocationRepository;
         this.bankAccountService = bankAccountService;
         this.envelopeAllocationService = envelopeAllocationService;
     }
@@ -74,11 +68,20 @@ public class TransactionService {
         bankAccountService.updateBalance(transaction.getBankAccount().getId(), balanceUpdate);
 
         // Auto-move: when a CC purchase is assigned to an envelope,
-        // increase the CC Payment envelope's allocation by the covered amount
+        // increase the CC Payment envelope's allocation by the full purchase amount
         if (isCreditCard(transaction.getBankAccount().getId())
                 && transaction.getEnvelope() != null
                 && transaction.getAmount().compareTo(BigDecimal.ZERO) < 0) {
             autoMoveToCCPaymentEnvelope(transaction);
+        }
+
+        // Reverse flow for CC refunds: when a refund is assigned to an envelope,
+        // decrease the CC Payment envelope's allocation (less cash needed to pay the
+        // card)
+        if (isCreditCard(transaction.getBankAccount().getId())
+                && transaction.getEnvelope() != null
+                && transaction.getAmount().compareTo(BigDecimal.ZERO) > 0) {
+            reverseRefundFromCCPaymentEnvelope(transaction);
         }
 
         Transaction savedTransaction = transactionRepository.save(transaction);
@@ -170,7 +173,17 @@ public class TransactionService {
                 && newEnvelopeId != null
                 && newAmount.compareTo(BigDecimal.ZERO) < 0;
 
-        // Reverse old auto-move if previously covered
+        boolean oldWasCCRefundWithEnvelope = oldBankAccountId != null
+                && isCreditCard(oldBankAccountId)
+                && oldEnvelopeId != null
+                && oldAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        boolean newIsCCRefundWithEnvelope = newBankAccountId != null
+                && isCreditCard(newBankAccountId)
+                && newEnvelopeId != null
+                && newAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        // Reverse old auto-move for purchases
         if (oldWasCCPurchaseWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(oldBankAccountId).ifPresent(ccEnv -> {
                 LocalDate month = LocalDate.now().withDayOfMonth(1);
@@ -178,22 +191,28 @@ public class TransactionService {
             });
         }
 
-        // Apply new auto-move (before saving, so envelope remaining is accurate)
+        // Reverse old refund-move (add back what was subtracted)
+        if (oldWasCCRefundWithEnvelope) {
+            envelopeRepository.findByLinkedAccountId(oldBankAccountId).ifPresent(ccEnv -> {
+                LocalDate month = LocalDate.now().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, oldAmount);
+            });
+        }
+
+        // Apply new auto-move for purchases (full amount, regardless of envelope
+        // remaining)
         if (newIsCCPurchaseWithEnvelope) {
             envelopeRepository.findByLinkedAccountId(newBankAccountId).ifPresent(ccEnv -> {
-                BigDecimal purchaseAmount = newAmount.abs();
-                BigDecimal totalAllocated = envelopeAllocationRepository
-                        .sumAllocationsByEnvelopeId(newEnvelopeId);
-                BigDecimal totalSpent = transactionRepository.sumAmountByEnvelopeId(newEnvelopeId);
-                if (totalSpent == null) {
-                    totalSpent = BigDecimal.ZERO;
-                }
-                BigDecimal remaining = totalAllocated.add(totalSpent);
-                BigDecimal coveredAmount = purchaseAmount.min(remaining.max(BigDecimal.ZERO));
-                if (coveredAmount.compareTo(BigDecimal.ZERO) > 0) {
-                    LocalDate month = LocalDate.now().withDayOfMonth(1);
-                    envelopeAllocationService.addToAllocation(ccEnv.getId(), month, coveredAmount);
-                }
+                LocalDate month = LocalDate.now().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, newAmount.abs());
+            });
+        }
+
+        // Apply new refund-move (subtract from CC Payment envelope)
+        if (newIsCCRefundWithEnvelope) {
+            envelopeRepository.findByLinkedAccountId(newBankAccountId).ifPresent(ccEnv -> {
+                LocalDate month = LocalDate.now().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, newAmount.negate());
             });
         }
 
@@ -252,14 +271,30 @@ public class TransactionService {
             reverseAutoMove(transaction);
         }
 
+        // Reverse refund-move if this was a CC refund assigned to an envelope
+        if (oldBankAccountId != null && isCreditCard(oldBankAccountId)
+                && transaction.getEnvelope() != null
+                && transaction.getAmount().compareTo(BigDecimal.ZERO) > 0
+                && transaction.getTransactionType() != TransactionType.CC_PAYMENT) {
+            // Refund deletion: add back what was subtracted from CC Payment envelope
+            UUID ccAccountId = transaction.getBankAccount().getId();
+            envelopeRepository.findByLinkedAccountId(ccAccountId).ifPresent(ccEnv -> {
+                LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), currentMonth, transaction.getAmount());
+            });
+        }
+
         transactionRepository.delete(transaction);
     }
 
     /**
-     * Auto-move funds from a spending envelope to the CC Payment envelope.
-     * When a CC purchase is assigned to an envelope, the covered portion
-     * (min of purchase amount and envelope's remaining funds) is moved
-     * to the CC Payment envelope by increasing its allocation.
+     * Auto-move funds to the CC Payment envelope when a CC purchase is assigned to
+     * an envelope.
+     * The full purchase amount is moved (not just the covered portion), matching
+     * YNAB behavior:
+     * the CC Payment envelope always reflects total assigned spending on the card.
+     * If the spending envelope is overspent, it goes negative but the CC Payment
+     * envelope still receives the full amount.
      */
     private void autoMoveToCCPaymentEnvelope(Transaction transaction) {
         UUID ccAccountId = transaction.getBankAccount().getId();
@@ -271,29 +306,32 @@ public class TransactionService {
         // Purchase amount is negative; take absolute value
         BigDecimal purchaseAmount = transaction.getAmount().abs();
 
-        // Calculate the spending envelope's remaining funds
-        UUID envelopeId = transaction.getEnvelope().getId();
-        BigDecimal totalAllocated = envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId);
-        BigDecimal totalSpent = transactionRepository.sumAmountByEnvelopeId(envelopeId);
-        if (totalSpent == null) {
-            totalSpent = BigDecimal.ZERO;
-        }
-        // remaining = allocated + spent (spent is negative for expenses, so this gives
-        // remaining)
-        BigDecimal remaining = totalAllocated.add(totalSpent);
+        // Increase the CC Payment envelope's allocation for the current month
+        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, purchaseAmount);
+    }
 
-        // Covered amount = min(purchaseAmount, max(remaining, 0))
-        BigDecimal coveredAmount = purchaseAmount.min(remaining.max(BigDecimal.ZERO));
-
-        if (coveredAmount.compareTo(BigDecimal.ZERO) > 0) {
-            // Increase the CC Payment envelope's allocation for the current month
-            LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-            envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, coveredAmount);
+    /**
+     * Reverse flow for CC refunds: when a refund is assigned to an envelope,
+     * decrease the CC Payment envelope's allocation since less cash is needed to
+     * pay the card.
+     */
+    private void reverseRefundFromCCPaymentEnvelope(Transaction transaction) {
+        UUID ccAccountId = transaction.getBankAccount().getId();
+        Envelope ccPaymentEnvelope = envelopeRepository.findByLinkedAccountId(ccAccountId).orElse(null);
+        if (ccPaymentEnvelope == null) {
+            return;
         }
+
+        BigDecimal refundAmount = transaction.getAmount(); // positive
+        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, refundAmount.negate());
     }
 
     /**
      * Reverse the auto-move when a CC purchase is deleted.
+     * Subtracts the full |amount| from the CC Payment envelope — symmetric with
+     * autoMoveToCCPaymentEnvelope which adds the full |amount|.
      */
     private void reverseAutoMove(Transaction transaction) {
         UUID ccAccountId = transaction.getBankAccount().getId();
