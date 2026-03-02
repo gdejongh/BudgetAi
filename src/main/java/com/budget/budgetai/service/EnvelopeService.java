@@ -3,7 +3,9 @@ package com.budget.budgetai.service;
 import com.budget.budgetai.dto.EnvelopeDTO;
 import com.budget.budgetai.dto.EnvelopeSpentSummaryDTO;
 import com.budget.budgetai.model.Envelope;
+import com.budget.budgetai.model.EnvelopeType;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.BankAccountRepository;
 import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
@@ -23,18 +25,21 @@ public class EnvelopeService {
 
     private final EnvelopeRepository envelopeRepository;
     private final AppUserRepository appUserRepository;
+    private final BankAccountRepository bankAccountRepository;
     private final EnvelopeCategoryRepository envelopeCategoryRepository;
     private final TransactionRepository transactionRepository;
     private final EnvelopeAllocationRepository envelopeAllocationRepository;
     private final EnvelopeAllocationService envelopeAllocationService;
 
     public EnvelopeService(EnvelopeRepository envelopeRepository, AppUserRepository appUserRepository,
+            BankAccountRepository bankAccountRepository,
             EnvelopeCategoryRepository envelopeCategoryRepository,
             TransactionRepository transactionRepository,
             EnvelopeAllocationRepository envelopeAllocationRepository,
             EnvelopeAllocationService envelopeAllocationService) {
         this.envelopeRepository = envelopeRepository;
         this.appUserRepository = appUserRepository;
+        this.bankAccountRepository = bankAccountRepository;
         this.envelopeCategoryRepository = envelopeCategoryRepository;
         this.transactionRepository = transactionRepository;
         this.envelopeAllocationRepository = envelopeAllocationRepository;
@@ -146,8 +151,11 @@ public class EnvelopeService {
     }
 
     public void delete(UUID id) {
-        if (!envelopeRepository.existsById(id)) {
-            throw new EntityNotFoundException("Envelope not found with id: " + id);
+        Envelope envelope = envelopeRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
+        if (envelope.getEnvelopeType() == EnvelopeType.CC_PAYMENT) {
+            throw new IllegalStateException(
+                    "Cannot delete a CC Payment envelope. Delete the linked credit card account instead.");
         }
         envelopeRepository.deleteById(id);
     }
@@ -177,6 +185,8 @@ public class EnvelopeService {
                 envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
                 envelope.getName(),
                 totalAllocated,
+                envelope.getEnvelopeType() != null ? envelope.getEnvelopeType().name() : EnvelopeType.STANDARD.name(),
+                envelope.getLinkedAccount() != null ? envelope.getLinkedAccount().getId() : null,
                 envelope.getCreatedAt());
     }
 
@@ -193,6 +203,8 @@ public class EnvelopeService {
                 envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
                 envelope.getName(),
                 totalAllocated,
+                envelope.getEnvelopeType() != null ? envelope.getEnvelopeType().name() : EnvelopeType.STANDARD.name(),
+                envelope.getLinkedAccount() != null ? envelope.getLinkedAccount().getId() : null,
                 envelope.getCreatedAt());
     }
 
@@ -204,6 +216,17 @@ public class EnvelopeService {
         envelope.setId(envelopeDTO.getId());
         envelope.setName(envelopeDTO.getName());
         envelope.setAllocatedBalance(envelopeDTO.getAllocatedBalance());
+
+        if (envelopeDTO.getEnvelopeType() != null) {
+            envelope.setEnvelopeType(EnvelopeType.valueOf(envelopeDTO.getEnvelopeType()));
+        }
+
+        if (envelopeDTO.getLinkedAccountId() != null) {
+            if (!bankAccountRepository.existsById(envelopeDTO.getLinkedAccountId())) {
+                throw new EntityNotFoundException("BankAccount not found with id: " + envelopeDTO.getLinkedAccountId());
+            }
+            envelope.setLinkedAccount(bankAccountRepository.getReferenceById(envelopeDTO.getLinkedAccountId()));
+        }
 
         if (envelopeDTO.getAppUserId() != null) {
             if (!appUserRepository.existsById(envelopeDTO.getAppUserId())) {

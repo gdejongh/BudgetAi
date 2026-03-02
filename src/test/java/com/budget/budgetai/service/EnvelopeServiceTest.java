@@ -6,6 +6,7 @@ import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.model.EnvelopeCategory;
 import com.budget.budgetai.repository.AppUserRepository;
+import com.budget.budgetai.repository.BankAccountRepository;
 import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
@@ -37,6 +38,9 @@ class EnvelopeServiceTest {
 
     @Mock
     private AppUserRepository appUserRepository;
+
+    @Mock
+    private BankAccountRepository bankAccountRepository;
 
     @Mock
     private EnvelopeCategoryRepository envelopeCategoryRepository;
@@ -289,7 +293,7 @@ class EnvelopeServiceTest {
 
     @Test
     void delete_existing_deletesSuccessfully() {
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(true);
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
 
         envelopeService.delete(envelopeId);
 
@@ -298,7 +302,7 @@ class EnvelopeServiceTest {
 
     @Test
     void delete_nonExisting_throwsEntityNotFoundException() {
-        when(envelopeRepository.existsById(envelopeId)).thenReturn(false);
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> envelopeService.delete(envelopeId));
     }

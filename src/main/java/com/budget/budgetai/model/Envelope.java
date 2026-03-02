@@ -31,6 +31,14 @@ public class Envelope {
     @Column(name = "allocated_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal allocatedBalance;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "envelope_type", nullable = false, length = 20)
+    private EnvelopeType envelopeType = EnvelopeType.STANDARD;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "linked_account_id")
+    private BankAccount linkedAccount;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

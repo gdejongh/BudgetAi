@@ -3,10 +3,13 @@ package com.budget.budgetai.service;
 import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
 import com.budget.budgetai.model.AccountType;
+import com.budget.budgetai.model.Envelope;
+import com.budget.budgetai.model.EnvelopeType;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.model.TransactionType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -27,16 +30,22 @@ public class TransactionService {
     private final AppUserRepository appUserRepository;
     private final BankAccountRepository bankAccountRepository;
     private final EnvelopeRepository envelopeRepository;
+    private final EnvelopeAllocationRepository envelopeAllocationRepository;
     private final BankAccountService bankAccountService;
+    private final EnvelopeAllocationService envelopeAllocationService;
 
     public TransactionService(TransactionRepository transactionRepository, AppUserRepository appUserRepository,
             BankAccountRepository bankAccountRepository, EnvelopeRepository envelopeRepository,
-            BankAccountService bankAccountService) {
+            EnvelopeAllocationRepository envelopeAllocationRepository,
+            BankAccountService bankAccountService,
+            EnvelopeAllocationService envelopeAllocationService) {
         this.transactionRepository = transactionRepository;
         this.appUserRepository = appUserRepository;
         this.bankAccountRepository = bankAccountRepository;
         this.envelopeRepository = envelopeRepository;
+        this.envelopeAllocationRepository = envelopeAllocationRepository;
         this.bankAccountService = bankAccountService;
+        this.envelopeAllocationService = envelopeAllocationService;
     }
 
     public TransactionDTO create(TransactionDTO transactionDTO) {
@@ -63,6 +72,15 @@ public class TransactionService {
                 ? transaction.getAmount().negate()
                 : transaction.getAmount();
         bankAccountService.updateBalance(transaction.getBankAccount().getId(), balanceUpdate);
+
+        // Auto-move: when a CC purchase is assigned to an envelope,
+        // increase the CC Payment envelope's allocation by the covered amount
+        if (isCreditCard(transaction.getBankAccount().getId())
+                && transaction.getEnvelope() != null
+                && transaction.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+            autoMoveToCCPaymentEnvelope(transaction);
+        }
+
         Transaction savedTransaction = transactionRepository.save(transaction);
         return toDTO(savedTransaction);
     }
@@ -189,7 +207,66 @@ public class TransactionService {
             bankAccountService.updateBalance(oldBankAccountId, revertAmount);
         }
 
+        // Reverse auto-move if this was a CC purchase assigned to an envelope
+        if (oldBankAccountId != null && isCreditCard(oldBankAccountId)
+                && transaction.getEnvelope() != null
+                && transaction.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+            reverseAutoMove(transaction);
+        }
+
         transactionRepository.delete(transaction);
+    }
+
+    /**
+     * Auto-move funds from a spending envelope to the CC Payment envelope.
+     * When a CC purchase is assigned to an envelope, the covered portion
+     * (min of purchase amount and envelope's remaining funds) is moved
+     * to the CC Payment envelope by increasing its allocation.
+     */
+    private void autoMoveToCCPaymentEnvelope(Transaction transaction) {
+        UUID ccAccountId = transaction.getBankAccount().getId();
+        Envelope ccPaymentEnvelope = envelopeRepository.findByLinkedAccountId(ccAccountId).orElse(null);
+        if (ccPaymentEnvelope == null) {
+            return; // No CC Payment envelope found — skip
+        }
+
+        // Purchase amount is negative; take absolute value
+        BigDecimal purchaseAmount = transaction.getAmount().abs();
+
+        // Calculate the spending envelope's remaining funds
+        UUID envelopeId = transaction.getEnvelope().getId();
+        BigDecimal totalAllocated = envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId);
+        BigDecimal totalSpent = transactionRepository.sumAmountByEnvelopeId(envelopeId);
+        if (totalSpent == null) {
+            totalSpent = BigDecimal.ZERO;
+        }
+        // remaining = allocated + spent (spent is negative for expenses, so this gives
+        // remaining)
+        BigDecimal remaining = totalAllocated.add(totalSpent);
+
+        // Covered amount = min(purchaseAmount, max(remaining, 0))
+        BigDecimal coveredAmount = purchaseAmount.min(remaining.max(BigDecimal.ZERO));
+
+        if (coveredAmount.compareTo(BigDecimal.ZERO) > 0) {
+            // Increase the CC Payment envelope's allocation for the current month
+            LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+            envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, coveredAmount);
+        }
+    }
+
+    /**
+     * Reverse the auto-move when a CC purchase is deleted.
+     */
+    private void reverseAutoMove(Transaction transaction) {
+        UUID ccAccountId = transaction.getBankAccount().getId();
+        Envelope ccPaymentEnvelope = envelopeRepository.findByLinkedAccountId(ccAccountId).orElse(null);
+        if (ccPaymentEnvelope == null) {
+            return;
+        }
+
+        BigDecimal purchaseAmount = transaction.getAmount().abs();
+        LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+        envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth, purchaseAmount.negate());
     }
 
     private void adjustBankAccountBalance(UUID oldAccountId, UUID newAccountId,
@@ -285,6 +362,13 @@ public class TransactionService {
         bankAccountService.updateBalance(request.getBankAccountId(), request.getAmount().negate());
         // Credit card: reduce debt (subtract from positive balance)
         bankAccountService.updateBalance(request.getCreditCardId(), request.getAmount().negate());
+
+        // Decrease CC Payment envelope allocation by the payment amount
+        envelopeRepository.findByLinkedAccountId(request.getCreditCardId()).ifPresent(ccPaymentEnvelope -> {
+            LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
+            envelopeAllocationService.addToAllocation(ccPaymentEnvelope.getId(), currentMonth,
+                    request.getAmount().negate());
+        });
 
         return toDTO(savedBankTxn);
     }

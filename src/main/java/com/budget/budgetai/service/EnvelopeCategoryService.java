@@ -2,6 +2,7 @@ package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.EnvelopeCategoryDTO;
 import com.budget.budgetai.model.EnvelopeCategory;
+import com.budget.budgetai.model.EnvelopeType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -73,8 +74,11 @@ public class EnvelopeCategoryService {
     }
 
     public void delete(UUID id) {
-        if (!envelopeCategoryRepository.existsById(id)) {
-            throw new EntityNotFoundException("Envelope category not found with id: " + id);
+        EnvelopeCategory category = envelopeCategoryRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Envelope category not found with id: " + id));
+        if (category.getCategoryType() == EnvelopeType.CC_PAYMENT) {
+            throw new IllegalStateException(
+                    "Cannot delete the Credit Card Payments category. Delete the linked credit card accounts instead.");
         }
         envelopeCategoryRepository.deleteById(id);
     }
@@ -105,6 +109,7 @@ public class EnvelopeCategoryService {
                 category.getId(),
                 category.getAppUser().getId(),
                 category.getName(),
+                category.getCategoryType() != null ? category.getCategoryType().name() : EnvelopeType.STANDARD.name(),
                 category.getCreatedAt());
     }
 
@@ -115,6 +120,10 @@ public class EnvelopeCategoryService {
         EnvelopeCategory category = new EnvelopeCategory();
         category.setId(dto.getId());
         category.setName(dto.getName());
+
+        if (dto.getCategoryType() != null) {
+            category.setCategoryType(EnvelopeType.valueOf(dto.getCategoryType()));
+        }
 
         if (dto.getAppUserId() != null) {
             if (!appUserRepository.existsById(dto.getAppUserId())) {

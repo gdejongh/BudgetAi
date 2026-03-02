@@ -23,6 +23,10 @@ public class EnvelopeDTO {
     @NotNull(message = "Allocated balance is required")
     private BigDecimal allocatedBalance;
 
+    private String envelopeType;
+
+    private UUID linkedAccountId;
+
     private ZonedDateTime createdAt;
 
     public EnvelopeDTO() {
@@ -35,6 +39,18 @@ public class EnvelopeDTO {
         this.envelopeCategoryId = envelopeCategoryId;
         this.name = name;
         this.allocatedBalance = allocatedBalance;
+        this.createdAt = createdAt;
+    }
+
+    public EnvelopeDTO(UUID id, UUID appUserId, UUID envelopeCategoryId, String name, BigDecimal allocatedBalance,
+            String envelopeType, UUID linkedAccountId, ZonedDateTime createdAt) {
+        this.id = id;
+        this.appUserId = appUserId;
+        this.envelopeCategoryId = envelopeCategoryId;
+        this.name = name;
+        this.allocatedBalance = allocatedBalance;
+        this.envelopeType = envelopeType;
+        this.linkedAccountId = linkedAccountId;
         this.createdAt = createdAt;
     }
 
@@ -76,6 +92,22 @@ public class EnvelopeDTO {
 
     public void setAllocatedBalance(BigDecimal allocatedBalance) {
         this.allocatedBalance = allocatedBalance;
+    }
+
+    public String getEnvelopeType() {
+        return envelopeType;
+    }
+
+    public void setEnvelopeType(String envelopeType) {
+        this.envelopeType = envelopeType;
+    }
+
+    public UUID getLinkedAccountId() {
+        return linkedAccountId;
+    }
+
+    public void setLinkedAccountId(UUID linkedAccountId) {
+        this.linkedAccountId = linkedAccountId;
     }
 
     public ZonedDateTime getCreatedAt() {

@@ -7,6 +7,8 @@ import com.budget.budgetai.model.BankAccount;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.EnvelopeCategoryRepository;
+import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +41,12 @@ class BankAccountServiceTest {
 
     @Mock
     private TransactionRepository transactionRepository;
+
+    @Mock
+    private EnvelopeCategoryRepository envelopeCategoryRepository;
+
+    @Mock
+    private EnvelopeRepository envelopeRepository;
 
     @InjectMocks
     private BankAccountService bankAccountService;
@@ -309,7 +317,8 @@ class BankAccountServiceTest {
 
     @Test
     void delete_existing_deletesSuccessfully() {
-        when(bankAccountRepository.existsById(accountId)).thenReturn(true);
+        bankAccount.setAccountType(AccountType.CHECKING);
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
 
         bankAccountService.delete(accountId);
 
@@ -318,7 +327,7 @@ class BankAccountServiceTest {
 
     @Test
     void delete_nonExisting_throwsEntityNotFoundException() {
-        when(bankAccountRepository.existsById(accountId)).thenReturn(false);
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> bankAccountService.delete(accountId));
     }
@@ -329,7 +338,9 @@ class BankAccountServiceTest {
         BankAccountRepository repo = mock(BankAccountRepository.class);
         AppUserRepository userRepo = mock(AppUserRepository.class);
         TransactionRepository txnRepo = mock(TransactionRepository.class);
-        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo);
+        EnvelopeCategoryRepository catRepo = mock(EnvelopeCategoryRepository.class);
+        EnvelopeRepository envRepo = mock(EnvelopeRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo, catRepo, envRepo);
 
         BankAccount account = new BankAccount();
         account.setId(accountId);
@@ -350,7 +361,9 @@ class BankAccountServiceTest {
         BankAccountRepository repo = mock(BankAccountRepository.class);
         AppUserRepository userRepo = mock(AppUserRepository.class);
         TransactionRepository txnRepo = mock(TransactionRepository.class);
-        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo);
+        EnvelopeCategoryRepository catRepo = mock(EnvelopeCategoryRepository.class);
+        EnvelopeRepository envRepo = mock(EnvelopeRepository.class);
+        BankAccountService service = new BankAccountService(repo, userRepo, txnRepo, catRepo, envRepo);
 
         when(repo.findById(accountId)).thenReturn(Optional.empty());
 

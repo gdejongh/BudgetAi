@@ -3,9 +3,14 @@ package com.budget.budgetai.service;
 import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.BankAccount;
+import com.budget.budgetai.model.Envelope;
+import com.budget.budgetai.model.EnvelopeCategory;
+import com.budget.budgetai.model.EnvelopeType;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.EnvelopeCategoryRepository;
+import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
@@ -21,15 +26,23 @@ import java.util.stream.Collectors;
 @Transactional
 public class BankAccountService {
 
+    private static final String CC_PAYMENT_CATEGORY_NAME = "Credit Card Payments";
+
     private final BankAccountRepository bankAccountRepository;
     private final AppUserRepository appUserRepository;
     private final TransactionRepository transactionRepository;
+    private final EnvelopeCategoryRepository envelopeCategoryRepository;
+    private final EnvelopeRepository envelopeRepository;
 
     public BankAccountService(BankAccountRepository bankAccountRepository, AppUserRepository appUserRepository,
-            TransactionRepository transactionRepository) {
+            TransactionRepository transactionRepository,
+            EnvelopeCategoryRepository envelopeCategoryRepository,
+            EnvelopeRepository envelopeRepository) {
         this.bankAccountRepository = bankAccountRepository;
         this.appUserRepository = appUserRepository;
         this.transactionRepository = transactionRepository;
+        this.envelopeCategoryRepository = envelopeCategoryRepository;
+        this.envelopeRepository = envelopeRepository;
     }
 
     public BankAccountDTO create(BankAccountDTO bankAccountDTO) {
@@ -50,6 +63,11 @@ public class BankAccountService {
 
         if (savedAccount.getCurrentBalance().compareTo(BigDecimal.ZERO) != 0) {
             createAuditTransaction(savedAccount, savedAccount.getCurrentBalance(), "Initial Balance");
+        }
+
+        // Auto-create CC Payment envelope when creating a credit card account
+        if (savedAccount.getAccountType() == AccountType.CREDIT_CARD) {
+            createCCPaymentEnvelope(savedAccount);
         }
 
         return toDTO(savedAccount);
@@ -109,10 +127,57 @@ public class BankAccountService {
     }
 
     public void delete(UUID id) {
-        if (!bankAccountRepository.existsById(id)) {
-            throw new EntityNotFoundException("BankAccount not found with id: " + id);
+        BankAccount account = bankAccountRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+
+        // If deleting a credit card, clean up its linked CC Payment envelope
+        if (account.getAccountType() == AccountType.CREDIT_CARD) {
+            envelopeRepository.findByLinkedAccountId(id).ifPresent(envelope -> {
+                envelopeRepository.delete(envelope);
+            });
+
+            // If no more CC Payment envelopes exist for this user, clean up the category
+            UUID appUserId = account.getAppUser().getId();
+            List<Envelope> remainingCCEnvelopes = envelopeRepository
+                    .findByAppUserIdAndEnvelopeType(appUserId, EnvelopeType.CC_PAYMENT);
+            // Filter out the one we just deleted (may still be in persistence context)
+            remainingCCEnvelopes.removeIf(e -> e.getLinkedAccount() != null && e.getLinkedAccount().getId().equals(id));
+            if (remainingCCEnvelopes.isEmpty()) {
+                List<EnvelopeCategory> ccCategories = envelopeCategoryRepository
+                        .findByAppUserIdAndCategoryType(appUserId, EnvelopeType.CC_PAYMENT);
+                ccCategories.forEach(envelopeCategoryRepository::delete);
+            }
         }
+
         bankAccountRepository.deleteById(id);
+    }
+
+    private void createCCPaymentEnvelope(BankAccount creditCard) {
+        UUID appUserId = creditCard.getAppUser().getId();
+
+        // Find or create the "Credit Card Payments" category
+        List<EnvelopeCategory> existingCategories = envelopeCategoryRepository
+                .findByAppUserIdAndCategoryType(appUserId, EnvelopeType.CC_PAYMENT);
+        EnvelopeCategory ccCategory;
+        if (existingCategories.isEmpty()) {
+            ccCategory = new EnvelopeCategory();
+            ccCategory.setAppUser(creditCard.getAppUser());
+            ccCategory.setName(CC_PAYMENT_CATEGORY_NAME);
+            ccCategory.setCategoryType(EnvelopeType.CC_PAYMENT);
+            ccCategory = envelopeCategoryRepository.save(ccCategory);
+        } else {
+            ccCategory = existingCategories.get(0);
+        }
+
+        // Create the CC Payment envelope linked to this credit card
+        Envelope envelope = new Envelope();
+        envelope.setAppUser(creditCard.getAppUser());
+        envelope.setEnvelopeCategory(ccCategory);
+        envelope.setName(creditCard.getName() + " Payment");
+        envelope.setAllocatedBalance(BigDecimal.ZERO);
+        envelope.setEnvelopeType(EnvelopeType.CC_PAYMENT);
+        envelope.setLinkedAccount(creditCard);
+        envelopeRepository.save(envelope);
     }
 
     private void createAuditTransaction(BankAccount bankAccount, BigDecimal amount, String description) {

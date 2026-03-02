@@ -15,34 +15,38 @@ import java.util.UUID;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
 
-    @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
-    List<Transaction> findByAppUserId(UUID appUserId);
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByAppUserId(UUID appUserId);
 
-    @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
-    List<Transaction> findByBankAccountId(UUID bankAccountId);
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByBankAccountId(UUID bankAccountId);
 
-    @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
-    List<Transaction> findByTransactionDateBetween(LocalDate startDate, LocalDate endDate);
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByTransactionDateBetween(LocalDate startDate, LocalDate endDate);
 
-    @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
-    List<Transaction> findByAppUserIdAndTransactionDateBetween(UUID appUserId, LocalDate startDate, LocalDate endDate);
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByAppUserIdAndTransactionDateBetween(UUID appUserId, LocalDate startDate,
+                        LocalDate endDate);
 
-    @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
-    List<Transaction> findByEnvelopeId(UUID envelopeId);
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByEnvelopeId(UUID envelopeId);
 
-    @Query("SELECT t.envelope.id, COALESCE(SUM(t.amount), 0) " +
-            "FROM Transaction t " +
-            "WHERE t.appUser.id = :appUserId AND t.envelope IS NOT NULL " +
-            "GROUP BY t.envelope.id")
-    List<Object[]> sumAmountByEnvelopeForUser(@Param("appUserId") UUID appUserId);
+        @Query("SELECT t.envelope.id, COALESCE(SUM(t.amount), 0) " +
+                        "FROM Transaction t " +
+                        "WHERE t.appUser.id = :appUserId AND t.envelope IS NOT NULL " +
+                        "GROUP BY t.envelope.id")
+        List<Object[]> sumAmountByEnvelopeForUser(@Param("appUserId") UUID appUserId);
 
-    @Query("SELECT t.envelope.id, COALESCE(SUM(t.amount), 0) " +
-            "FROM Transaction t " +
-            "WHERE t.appUser.id = :appUserId AND t.envelope IS NOT NULL " +
-            "AND t.transactionDate BETWEEN :startDate AND :endDate " +
-            "GROUP BY t.envelope.id")
-    List<Object[]> sumAmountByEnvelopeForUserInDateRange(
-            @Param("appUserId") UUID appUserId,
-            @Param("startDate") LocalDate startDate,
-            @Param("endDate") LocalDate endDate);
+        @Query("SELECT t.envelope.id, COALESCE(SUM(t.amount), 0) " +
+                        "FROM Transaction t " +
+                        "WHERE t.appUser.id = :appUserId AND t.envelope IS NOT NULL " +
+                        "AND t.transactionDate BETWEEN :startDate AND :endDate " +
+                        "GROUP BY t.envelope.id")
+        List<Object[]> sumAmountByEnvelopeForUserInDateRange(
+                        @Param("appUserId") UUID appUserId,
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate);
+
+        @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.envelope.id = :envelopeId")
+        BigDecimal sumAmountByEnvelopeId(@Param("envelopeId") UUID envelopeId);
 }

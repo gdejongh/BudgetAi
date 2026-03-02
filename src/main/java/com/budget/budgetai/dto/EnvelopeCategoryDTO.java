@@ -16,6 +16,8 @@ public class EnvelopeCategoryDTO {
     @NotBlank(message = "Name is required")
     private String name;
 
+    private String categoryType;
+
     private ZonedDateTime createdAt;
 
     public EnvelopeCategoryDTO() {
@@ -25,6 +27,14 @@ public class EnvelopeCategoryDTO {
         this.id = id;
         this.appUserId = appUserId;
         this.name = name;
+        this.createdAt = createdAt;
+    }
+
+    public EnvelopeCategoryDTO(UUID id, UUID appUserId, String name, String categoryType, ZonedDateTime createdAt) {
+        this.id = id;
+        this.appUserId = appUserId;
+        this.name = name;
+        this.categoryType = categoryType;
         this.createdAt = createdAt;
     }
 
@@ -50,6 +60,14 @@ public class EnvelopeCategoryDTO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getCategoryType() {
+        return categoryType;
+    }
+
+    public void setCategoryType(String categoryType) {
+        this.categoryType = categoryType;
     }
 
     public ZonedDateTime getCreatedAt() {

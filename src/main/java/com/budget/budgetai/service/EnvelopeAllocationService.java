@@ -95,6 +95,30 @@ public class EnvelopeAllocationService {
         return allocationRepository.sumAllocationsByEnvelopeId(envelopeId);
     }
 
+    /**
+     * Add (or subtract) an amount to an envelope's allocation for a given month.
+     * If no allocation exists for the month, one is created.
+     */
+    public void addToAllocation(UUID envelopeId, LocalDate yearMonth, BigDecimal amount) {
+        Envelope envelope = envelopeRepository.findById(envelopeId)
+                .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + envelopeId));
+
+        LocalDate normalizedMonth = yearMonth.withDayOfMonth(1);
+
+        EnvelopeAllocation allocation = allocationRepository
+                .findByEnvelopeIdAndYearMonth(envelopeId, normalizedMonth)
+                .orElseGet(() -> {
+                    EnvelopeAllocation newAlloc = new EnvelopeAllocation();
+                    newAlloc.setEnvelope(envelope);
+                    newAlloc.setYearMonth(normalizedMonth);
+                    newAlloc.setAmount(BigDecimal.ZERO);
+                    return newAlloc;
+                });
+
+        allocation.setAmount(allocation.getAmount().add(amount));
+        allocationRepository.save(allocation);
+    }
+
     private EnvelopeAllocationDTO toDTO(EnvelopeAllocation entity) {
         return new EnvelopeAllocationDTO(
                 entity.getEnvelope().getId(),

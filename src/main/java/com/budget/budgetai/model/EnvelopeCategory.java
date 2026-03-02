@@ -24,6 +24,10 @@ public class EnvelopeCategory {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category_type", nullable = false, length = 20)
+    private EnvelopeType categoryType = EnvelopeType.STANDARD;
+
     @OneToMany(mappedBy = "envelopeCategory", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Envelope> envelopes;
 

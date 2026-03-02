@@ -202,7 +202,7 @@ class EnvelopeCategoryServiceTest {
 
     @Test
     void delete_existing_deletesSuccessfully() {
-        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(true);
+        when(envelopeCategoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
 
         envelopeCategoryService.delete(categoryId);
 
@@ -211,7 +211,7 @@ class EnvelopeCategoryServiceTest {
 
     @Test
     void delete_nonExisting_throwsEntityNotFoundException() {
-        when(envelopeCategoryRepository.existsById(categoryId)).thenReturn(false);
+        when(envelopeCategoryRepository.findById(categoryId)).thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> envelopeCategoryService.delete(categoryId));
     }

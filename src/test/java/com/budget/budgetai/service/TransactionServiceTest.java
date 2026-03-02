@@ -10,6 +10,7 @@ import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.model.TransactionType;
 import com.budget.budgetai.repository.AppUserRepository;
 import com.budget.budgetai.repository.BankAccountRepository;
+import com.budget.budgetai.repository.EnvelopeAllocationRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -49,7 +50,13 @@ class TransactionServiceTest {
     private EnvelopeRepository envelopeRepository;
 
     @Mock
+    private EnvelopeAllocationRepository envelopeAllocationRepository;
+
+    @Mock
     private BankAccountService bankAccountService;
+
+    @Mock
+    private EnvelopeAllocationService envelopeAllocationService;
 
     @InjectMocks
     private TransactionService transactionService;
