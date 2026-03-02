@@ -17,3 +17,6 @@ spring:
       # Keep this as validate. Flyway builds the database, Hibernate checks it matches your Entities.
       ddl-auto: validate
     show-sql: false
+
+plaid:
+  env: production

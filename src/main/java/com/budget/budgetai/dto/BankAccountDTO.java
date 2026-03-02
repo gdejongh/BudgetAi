@@ -24,6 +24,16 @@ public class BankAccountDTO {
 
     private ZonedDateTime createdAt;
 
+    private String plaidAccountId;
+
+    private UUID plaidItemId;
+
+    private String accountMask;
+
+    private boolean manual = true;
+
+    private String institutionName;
+
     public BankAccountDTO() {
     }
 
@@ -83,5 +93,45 @@ public class BankAccountDTO {
 
     public void setCreatedAt(ZonedDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getPlaidAccountId() {
+        return plaidAccountId;
+    }
+
+    public void setPlaidAccountId(String plaidAccountId) {
+        this.plaidAccountId = plaidAccountId;
+    }
+
+    public UUID getPlaidItemId() {
+        return plaidItemId;
+    }
+
+    public void setPlaidItemId(UUID plaidItemId) {
+        this.plaidItemId = plaidItemId;
+    }
+
+    public String getAccountMask() {
+        return accountMask;
+    }
+
+    public void setAccountMask(String accountMask) {
+        this.accountMask = accountMask;
+    }
+
+    public boolean isManual() {
+        return manual;
+    }
+
+    public void setManual(boolean manual) {
+        this.manual = manual;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
+    }
+
+    public void setInstitutionName(String institutionName) {
+        this.institutionName = institutionName;
     }
 }

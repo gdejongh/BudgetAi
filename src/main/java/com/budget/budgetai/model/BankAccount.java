@@ -32,6 +32,19 @@ public class BankAccount {
     @Column(name = "current_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal currentBalance;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plaid_item_id")
+    private PlaidItem plaidItem;
+
+    @Column(name = "plaid_account_id")
+    private String plaidAccountId;
+
+    @Column(name = "account_mask", length = 4)
+    private String accountMask;
+
+    @Column(name = "is_manual", nullable = false)
+    private boolean manual = true;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

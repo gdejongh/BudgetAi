@@ -229,7 +229,7 @@ public class BankAccountService {
         if (bankAccount == null) {
             return null;
         }
-        return new BankAccountDTO(
+        BankAccountDTO dto = new BankAccountDTO(
                 bankAccount.getId(),
                 bankAccount.getAppUser().getId(),
                 bankAccount.getName(),
@@ -237,6 +237,14 @@ public class BankAccountService {
                         : AccountType.CHECKING.name(),
                 bankAccount.getCurrentBalance(),
                 bankAccount.getCreatedAt());
+        dto.setPlaidAccountId(bankAccount.getPlaidAccountId());
+        dto.setPlaidItemId(bankAccount.getPlaidItem() != null ? bankAccount.getPlaidItem().getId() : null);
+        dto.setAccountMask(bankAccount.getAccountMask());
+        dto.setManual(bankAccount.isManual());
+        if (bankAccount.getPlaidItem() != null) {
+            dto.setInstitutionName(bankAccount.getPlaidItem().getInstitutionName());
+        }
+        return dto;
     }
 
     private BankAccount toEntity(BankAccountDTO bankAccountDTO) {
@@ -266,5 +274,56 @@ public class BankAccountService {
         BankAccount account = bankAccountRepository.findById(accountId)
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + accountId));
         return account.getAccountType() == AccountType.CREDIT_CARD;
+    }
+
+    public BankAccount findEntityById(UUID id) {
+        return bankAccountRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+    }
+
+    public java.util.Optional<BankAccount> findByPlaidAccountId(String plaidAccountId) {
+        return bankAccountRepository.findByPlaidAccountId(plaidAccountId);
+    }
+
+    public List<BankAccountDTO> getByPlaidItemId(UUID plaidItemId) {
+        return bankAccountRepository.findByPlaidItemId(plaidItemId).stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    public BankAccountDTO createPlaidAccount(BankAccountDTO dto, com.budget.budgetai.model.PlaidItem plaidItem,
+            String plaidAccountId, String mask) {
+        BankAccount account = toEntity(dto);
+        account.setPlaidItem(plaidItem);
+        account.setPlaidAccountId(plaidAccountId);
+        account.setAccountMask(mask);
+        account.setManual(false);
+        BankAccount saved = bankAccountRepository.save(account);
+
+        if (saved.getCurrentBalance().compareTo(java.math.BigDecimal.ZERO) != 0) {
+            java.math.BigDecimal initialAmount = saved.getAccountType() == AccountType.CREDIT_CARD
+                    ? saved.getCurrentBalance().negate()
+                    : saved.getCurrentBalance();
+            createAuditTransaction(saved, initialAmount, "Initial Balance (Plaid)");
+        }
+
+        if (saved.getAccountType() == AccountType.CREDIT_CARD) {
+            createCCPaymentEnvelope(saved);
+        }
+
+        return toDTO(saved);
+    }
+
+    public BankAccountDTO linkPlaidAccount(UUID existingAccountId, com.budget.budgetai.model.PlaidItem plaidItem,
+            String plaidAccountId, String mask, java.math.BigDecimal plaidBalance) {
+        BankAccount account = bankAccountRepository.findById(existingAccountId)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + existingAccountId));
+        account.setPlaidItem(plaidItem);
+        account.setPlaidAccountId(plaidAccountId);
+        account.setAccountMask(mask);
+        account.setManual(false);
+        account.setCurrentBalance(plaidBalance);
+        BankAccount saved = bankAccountRepository.save(account);
+        return toDTO(saved);
     }
 }
