@@ -131,6 +131,52 @@ class EnvelopeAllocationServiceTest {
     }
 
     @Test
+    void setAllocation_negativeAmount_createsAllocation() {
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(allocationRepository.findByEnvelopeIdAndYearMonth(envelopeId, march2026))
+                .thenReturn(Optional.empty());
+
+        EnvelopeAllocation saved = new EnvelopeAllocation();
+        saved.setId(UUID.randomUUID());
+        saved.setEnvelope(envelope);
+        saved.setYearMonth(march2026);
+        saved.setAmount(new BigDecimal("-20.00"));
+        when(allocationRepository.save(any(EnvelopeAllocation.class))).thenReturn(saved);
+
+        EnvelopeAllocationDTO result = allocationService.setAllocation(
+                envelopeId, march2026, new BigDecimal("-20.00"));
+
+        assertNotNull(result);
+        assertEquals(new BigDecimal("-20.00"), result.getAmount());
+        assertEquals(envelopeId, result.getEnvelopeId());
+    }
+
+    @Test
+    void setAllocation_negativeAmount_updatesExistingAllocation() {
+        EnvelopeAllocation existing = new EnvelopeAllocation();
+        existing.setId(UUID.randomUUID());
+        existing.setEnvelope(envelope);
+        existing.setYearMonth(march2026);
+        existing.setAmount(new BigDecimal("50.00"));
+
+        when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.of(envelope));
+        when(allocationRepository.findByEnvelopeIdAndYearMonth(envelopeId, march2026))
+                .thenReturn(Optional.of(existing));
+
+        EnvelopeAllocation saved = new EnvelopeAllocation();
+        saved.setId(existing.getId());
+        saved.setEnvelope(envelope);
+        saved.setYearMonth(march2026);
+        saved.setAmount(new BigDecimal("-20.00"));
+        when(allocationRepository.save(any(EnvelopeAllocation.class))).thenReturn(saved);
+
+        EnvelopeAllocationDTO result = allocationService.setAllocation(
+                envelopeId, march2026, new BigDecimal("-20.00"));
+
+        assertEquals(new BigDecimal("-20.00"), result.getAmount());
+    }
+
+    @Test
     void setAllocation_envelopeNotFound_throwsEntityNotFoundException() {
         when(envelopeRepository.findById(envelopeId)).thenReturn(Optional.empty());
 

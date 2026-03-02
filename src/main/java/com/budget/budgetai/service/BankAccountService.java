@@ -62,7 +62,12 @@ public class BankAccountService {
         BankAccount savedAccount = bankAccountRepository.save(bankAccount);
 
         if (savedAccount.getCurrentBalance().compareTo(BigDecimal.ZERO) != 0) {
-            createAuditTransaction(savedAccount, savedAccount.getCurrentBalance(), "Initial Balance");
+            // For credit cards, the balance represents debt owed, so negate it
+            // so the initial balance transaction appears as a negative (expense).
+            BigDecimal initialAmount = savedAccount.getAccountType() == AccountType.CREDIT_CARD
+                    ? savedAccount.getCurrentBalance().negate()
+                    : savedAccount.getCurrentBalance();
+            createAuditTransaction(savedAccount, initialAmount, "Initial Balance");
         }
 
         // Auto-create CC Payment envelope when creating a credit card account

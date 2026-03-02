@@ -501,4 +501,27 @@ class BankAccountServiceTest {
         assertEquals("Visa", result.getName());
         assertEquals(BigDecimal.ZERO, result.getCurrentBalance());
     }
+
+    @Test
+    void create_creditCard_nonZeroBalance_createsNegativeInitialBalanceTransaction() {
+        BankAccountDTO ccDTO = new BankAccountDTO(null, userId, "Visa", "CREDIT_CARD", new BigDecimal("20.00"), null);
+
+        BankAccount ccAccount = new BankAccount();
+        ccAccount.setId(accountId);
+        ccAccount.setAppUser(appUser);
+        ccAccount.setName("Visa");
+        ccAccount.setAccountType(AccountType.CREDIT_CARD);
+        ccAccount.setCurrentBalance(new BigDecimal("20.00"));
+        ccAccount.setCreatedAt(ZonedDateTime.now());
+
+        when(appUserRepository.existsById(userId)).thenReturn(true);
+        when(appUserRepository.getReferenceById(userId)).thenReturn(appUser);
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(ccAccount);
+
+        bankAccountService.create(ccDTO);
+
+        verify(transactionRepository).save(argThat(txn -> txn.getAmount().compareTo(new BigDecimal("-20.00")) == 0
+                && "Initial Balance".equals(txn.getDescription())
+                && txn.getBankAccount().getId().equals(accountId)));
+    }
 }
