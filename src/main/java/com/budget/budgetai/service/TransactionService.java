@@ -159,6 +159,44 @@ public class TransactionService {
 
         adjustBankAccountBalance(oldBankAccountId, newBankAccountId, oldAmount, newAmount);
 
+        // --- CC Payment envelope auto-move adjustments on update ---
+        boolean oldWasCCPurchaseWithEnvelope = oldBankAccountId != null
+                && isCreditCard(oldBankAccountId)
+                && oldEnvelopeId != null
+                && oldAmount.compareTo(BigDecimal.ZERO) < 0;
+
+        boolean newIsCCPurchaseWithEnvelope = newBankAccountId != null
+                && isCreditCard(newBankAccountId)
+                && newEnvelopeId != null
+                && newAmount.compareTo(BigDecimal.ZERO) < 0;
+
+        // Reverse old auto-move if previously covered
+        if (oldWasCCPurchaseWithEnvelope) {
+            envelopeRepository.findByLinkedAccountId(oldBankAccountId).ifPresent(ccEnv -> {
+                LocalDate month = LocalDate.now().withDayOfMonth(1);
+                envelopeAllocationService.addToAllocation(ccEnv.getId(), month, oldAmount.abs().negate());
+            });
+        }
+
+        // Apply new auto-move (before saving, so envelope remaining is accurate)
+        if (newIsCCPurchaseWithEnvelope) {
+            envelopeRepository.findByLinkedAccountId(newBankAccountId).ifPresent(ccEnv -> {
+                BigDecimal purchaseAmount = newAmount.abs();
+                BigDecimal totalAllocated = envelopeAllocationRepository
+                        .sumAllocationsByEnvelopeId(newEnvelopeId);
+                BigDecimal totalSpent = transactionRepository.sumAmountByEnvelopeId(newEnvelopeId);
+                if (totalSpent == null) {
+                    totalSpent = BigDecimal.ZERO;
+                }
+                BigDecimal remaining = totalAllocated.add(totalSpent);
+                BigDecimal coveredAmount = purchaseAmount.min(remaining.max(BigDecimal.ZERO));
+                if (coveredAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    LocalDate month = LocalDate.now().withDayOfMonth(1);
+                    envelopeAllocationService.addToAllocation(ccEnv.getId(), month, coveredAmount);
+                }
+            });
+        }
+
         if (newBankAccountId != null && !newBankAccountId.equals(oldBankAccountId)) {
             transaction.setBankAccount(bankAccountRepository.getReferenceById(newBankAccountId));
         }

@@ -107,13 +107,42 @@ public class BankAccountService {
         BigDecimal oldBalance = bankAccount.getCurrentBalance();
 
         bankAccount.setName(bankAccountDTO.getName());
-        bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
+
+        // Credit card balances should only change through transactions, not manual
+        // edits
+        if (bankAccount.getAccountType() != AccountType.CREDIT_CARD) {
+            bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
+        }
         BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
 
-        BigDecimal difference = bankAccountDTO.getCurrentBalance().subtract(oldBalance);
+        BigDecimal difference = updatedAccount.getCurrentBalance().subtract(oldBalance);
         if (difference.compareTo(BigDecimal.ZERO) != 0) {
             createAuditTransaction(updatedAccount, difference, "Adjustment");
         }
+
+        return toDTO(updatedAccount);
+    }
+
+    public BankAccountDTO reconcileBalance(UUID id, BigDecimal targetBalance) {
+        if (targetBalance == null) {
+            throw new IllegalArgumentException("Target balance cannot be null");
+        }
+        if (targetBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Target balance cannot be negative");
+        }
+        BankAccount bankAccount = bankAccountRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
+
+        BigDecimal oldBalance = bankAccount.getCurrentBalance();
+        BigDecimal difference = targetBalance.subtract(oldBalance);
+
+        if (difference.compareTo(BigDecimal.ZERO) == 0) {
+            return toDTO(bankAccount);
+        }
+
+        bankAccount.setCurrentBalance(targetBalance);
+        BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
+        createAuditTransaction(updatedAccount, difference, "Balance Adjustment");
 
         return toDTO(updatedAccount);
     }

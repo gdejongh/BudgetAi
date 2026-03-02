@@ -3,6 +3,7 @@ package com.budget.budgetai.controller;
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.dto.CreateBankAccountRequest;
+import com.budget.budgetai.dto.ReconcileBalanceRequest;
 import com.budget.budgetai.service.BankAccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -64,6 +65,15 @@ public class BankAccountController {
         BankAccountDTO existing = bankAccountService.getById(id);
         SecurityUtils.verifyOwnership(existing.getAppUserId());
         return ResponseEntity.ok(bankAccountService.update(id, bankAccountDTO));
+    }
+
+    @PostMapping("/{id}/reconcile")
+    @Operation(operationId = "reconcileBankAccount", summary = "Reconcile account balance to match a statement")
+    public ResponseEntity<BankAccountDTO> reconcile(@PathVariable UUID id,
+            @Valid @RequestBody ReconcileBalanceRequest request) {
+        BankAccountDTO existing = bankAccountService.getById(id);
+        SecurityUtils.verifyOwnership(existing.getAppUserId());
+        return ResponseEntity.ok(bankAccountService.reconcileBalance(id, request.getTargetBalance()));
     }
 
     @DeleteMapping("/{id}")

@@ -313,6 +313,82 @@ class BankAccountServiceTest {
         assertThrows(IllegalArgumentException.class, () -> bankAccountService.update(accountId, null));
     }
 
+    @Test
+    void update_creditCard_ignoresBalanceChange() {
+        bankAccount.setAccountType(AccountType.CREDIT_CARD);
+        bankAccount.setCurrentBalance(new BigDecimal("500.00"));
+
+        BankAccountDTO updateDTO = new BankAccountDTO(null, userId, "Visa", "CREDIT_CARD", new BigDecimal("999.00"),
+                null);
+
+        BankAccount savedAccount = new BankAccount();
+        savedAccount.setId(accountId);
+        savedAccount.setAppUser(appUser);
+        savedAccount.setName("Visa");
+        savedAccount.setAccountType(AccountType.CREDIT_CARD);
+        savedAccount.setCurrentBalance(new BigDecimal("500.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(savedAccount);
+
+        BankAccountDTO result = bankAccountService.update(accountId, updateDTO);
+
+        assertEquals("Visa", result.getName());
+        // Balance should remain unchanged — CC balances only change via transactions
+        assertEquals(new BigDecimal("500.00"), result.getCurrentBalance());
+        verify(transactionRepository, never()).save(any(Transaction.class));
+    }
+
+    // --- reconcileBalance ---
+
+    @Test
+    void reconcileBalance_updatesBalanceAndCreatesAdjustment() {
+        bankAccount.setAccountType(AccountType.CREDIT_CARD);
+        bankAccount.setCurrentBalance(new BigDecimal("500.00"));
+
+        BankAccount savedAccount = new BankAccount();
+        savedAccount.setId(accountId);
+        savedAccount.setAppUser(appUser);
+        savedAccount.setName("Checking");
+        savedAccount.setAccountType(AccountType.CREDIT_CARD);
+        savedAccount.setCurrentBalance(new BigDecimal("750.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(savedAccount);
+
+        BankAccountDTO result = bankAccountService.reconcileBalance(accountId, new BigDecimal("750.00"));
+
+        assertEquals(new BigDecimal("750.00"), result.getCurrentBalance());
+        // Difference is 750 - 500 = 250
+        verify(transactionRepository).save(argThat(txn -> txn.getAmount().compareTo(new BigDecimal("250.00")) == 0
+                && "Balance Adjustment".equals(txn.getDescription())));
+    }
+
+    @Test
+    void reconcileBalance_sameBalance_noTransaction() {
+        bankAccount.setCurrentBalance(new BigDecimal("500.00"));
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(bankAccount));
+
+        BankAccountDTO result = bankAccountService.reconcileBalance(accountId, new BigDecimal("500.00"));
+
+        assertEquals(new BigDecimal("500.00"), result.getCurrentBalance());
+        verify(transactionRepository, never()).save(any(Transaction.class));
+        verify(bankAccountRepository, never()).save(any(BankAccount.class));
+    }
+
+    @Test
+    void reconcileBalance_nullBalance_throwsIllegalArgument() {
+        assertThrows(IllegalArgumentException.class,
+                () -> bankAccountService.reconcileBalance(accountId, null));
+    }
+
+    @Test
+    void reconcileBalance_negativeBalance_throwsIllegalArgument() {
+        assertThrows(IllegalArgumentException.class,
+                () -> bankAccountService.reconcileBalance(accountId, new BigDecimal("-100.00")));
+    }
+
     // --- delete ---
 
     @Test
