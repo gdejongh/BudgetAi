@@ -113,8 +113,7 @@ public class JwtService {
     }
 
     public void revokeRefreshToken(String token) {
-        refreshTokenRepository.findByToken(token)
-                .ifPresent(refreshTokenRepository::delete);
+        refreshTokenRepository.deleteByTokenValue(token);
     }
 
     public void revokeAllUserRefreshTokens(UUID userId) {

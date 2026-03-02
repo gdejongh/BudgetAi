@@ -504,7 +504,7 @@ public class TransactionService {
         if (transaction == null) {
             return null;
         }
-        return new TransactionDTO(
+        TransactionDTO dto = new TransactionDTO(
                 transaction.getId(),
                 transaction.getAppUser().getId(),
                 transaction.getBankAccount().getId(),
@@ -516,6 +516,11 @@ public class TransactionService {
                         : TransactionType.STANDARD.name(),
                 transaction.getLinkedTransaction() != null ? transaction.getLinkedTransaction().getId() : null,
                 transaction.getCreatedAt());
+        dto.setPending(transaction.isPending());
+        dto.setMerchantName(transaction.getMerchantName());
+        dto.setPlaidCategory(transaction.getPlaidCategory());
+        dto.setPlaidTransactionId(transaction.getPlaidTransactionId());
+        return dto;
     }
 
     private Transaction toEntity(TransactionDTO transactionDTO) {

@@ -32,6 +32,14 @@ public class TransactionDTO {
 
     private ZonedDateTime createdAt;
 
+    private boolean pending = false;
+
+    private String merchantName;
+
+    private String plaidCategory;
+
+    private String plaidTransactionId;
+
     public TransactionDTO() {
     }
 
@@ -128,5 +136,37 @@ public class TransactionDTO {
 
     public void setCreatedAt(ZonedDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isPending() {
+        return pending;
+    }
+
+    public void setPending(boolean pending) {
+        this.pending = pending;
+    }
+
+    public String getMerchantName() {
+        return merchantName;
+    }
+
+    public void setMerchantName(String merchantName) {
+        this.merchantName = merchantName;
+    }
+
+    public String getPlaidCategory() {
+        return plaidCategory;
+    }
+
+    public void setPlaidCategory(String plaidCategory) {
+        this.plaidCategory = plaidCategory;
+    }
+
+    public String getPlaidTransactionId() {
+        return plaidTransactionId;
+    }
+
+    public void setPlaidTransactionId(String plaidTransactionId) {
+        this.plaidTransactionId = plaidTransactionId;
     }
 }

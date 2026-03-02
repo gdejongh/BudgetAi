@@ -47,6 +47,18 @@ public class Transaction {
     @Column(name = "transaction_date", nullable = false)
     private LocalDate transactionDate;
 
+    @Column(name = "plaid_transaction_id")
+    private String plaidTransactionId;
+
+    @Column(nullable = false)
+    private boolean pending = false;
+
+    @Column(name = "merchant_name")
+    private String merchantName;
+
+    @Column(name = "plaid_category")
+    private String plaidCategory;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

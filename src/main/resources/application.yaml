@@ -26,3 +26,9 @@ jwt:
 
 cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
+
+plaid:
+  client-id: ${PLAID_CLIENT_ID:}
+  secret: ${PLAID_SECRET:}
+  env: ${PLAID_ENV:sandbox}
+  encryption-key: ${PLAID_ENCRYPTION_KEY:dev-encryption-key-change-in-prod-32b}
