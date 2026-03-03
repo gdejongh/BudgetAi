@@ -34,6 +34,8 @@ public class BankAccountDTO {
 
     private String institutionName;
 
+    private ZonedDateTime plaidLinkedAt;
+
     public BankAccountDTO() {
     }
 
@@ -133,5 +135,13 @@ public class BankAccountDTO {
 
     public void setInstitutionName(String institutionName) {
         this.institutionName = institutionName;
+    }
+
+    public ZonedDateTime getPlaidLinkedAt() {
+        return plaidLinkedAt;
+    }
+
+    public void setPlaidLinkedAt(ZonedDateTime plaidLinkedAt) {
+        this.plaidLinkedAt = plaidLinkedAt;
     }
 }

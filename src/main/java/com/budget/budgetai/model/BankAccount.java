@@ -45,6 +45,9 @@ public class BankAccount {
     @Column(name = "is_manual", nullable = false)
     private boolean manual = true;
 
+    @Column(name = "plaid_linked_at")
+    private ZonedDateTime plaidLinkedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

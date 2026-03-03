@@ -175,9 +175,6 @@ public class PlaidService {
                 }
             }
 
-            // Trigger initial transaction sync
-            // syncTransactions(plaidItem, accessToken);
-
             return linkedAccounts;
         } catch (IOException e) {
             throw new RuntimeException("Error communicating with Plaid API", e);
@@ -303,11 +300,6 @@ public class PlaidService {
                 .collect(Collectors.toList());
     }
 
-    public PlaidItem getPlaidItemEntity(UUID plaidItemId, UUID userId) {
-        return plaidItemRepository.findByIdAndAppUserId(plaidItemId, userId)
-                .orElseThrow(() -> new EntityNotFoundException("PlaidItem not found"));
-    }
-
     // --- Private helpers ---
 
     private void processAddedTransaction(PlaidItem plaidItem, com.plaid.client.model.Transaction plaidTxn) {
@@ -323,6 +315,18 @@ public class PlaidService {
             return;
         }
         BankAccount bankAccount = bankAccountOpt.get();
+
+        // Skip transactions that occurred before the account was linked via Plaid.
+        // This prevents importing historical transactions that can't be meaningfully
+        // assigned to envelopes retroactively.
+        if (bankAccount.getPlaidLinkedAt() != null && plaidTxn.getDate() != null) {
+            LocalDate linkedDate = bankAccount.getPlaidLinkedAt().toLocalDate();
+            if (plaidTxn.getDate().isBefore(linkedDate)) {
+                log.debug("Skipping pre-link transaction {} (date {} before linked date {})",
+                        plaidTxn.getTransactionId(), plaidTxn.getDate(), linkedDate);
+                return;
+            }
+        }
 
         com.budget.budgetai.model.Transaction transaction = new com.budget.budgetai.model.Transaction();
         transaction.setAppUser(plaidItem.getAppUser());

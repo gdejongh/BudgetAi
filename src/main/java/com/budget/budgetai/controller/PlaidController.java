@@ -2,7 +2,6 @@ package com.budget.budgetai.controller;
 
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.*;
-import com.budget.budgetai.model.PlaidItem;
 import com.budget.budgetai.service.PlaidService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -56,18 +55,4 @@ public class PlaidController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/items/{id}/sync")
-    @Operation(operationId = "syncPlaidItem", summary = "Manually trigger a sync for a Plaid connection")
-    public ResponseEntity<PlaidItemDTO> syncPlaidItem(@PathVariable UUID id) {
-        UUID userId = SecurityUtils.getCurrentUserId();
-        PlaidItem plaidItem = plaidService.getPlaidItemEntity(id, userId);
-        plaidService.syncTransactions(plaidItem);
-        plaidService.refreshBalances(plaidItem);
-        List<PlaidItemDTO> items = plaidService.getItemsByUserId(userId);
-        PlaidItemDTO updated = items.stream()
-                .filter(i -> i.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-        return ResponseEntity.ok(updated);
-    }
 }

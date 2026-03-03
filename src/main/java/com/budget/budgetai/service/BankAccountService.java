@@ -244,6 +244,7 @@ public class BankAccountService {
         if (bankAccount.getPlaidItem() != null) {
             dto.setInstitutionName(bankAccount.getPlaidItem().getInstitutionName());
         }
+        dto.setPlaidLinkedAt(bankAccount.getPlaidLinkedAt());
         return dto;
     }
 
@@ -298,6 +299,7 @@ public class BankAccountService {
         account.setPlaidAccountId(plaidAccountId);
         account.setAccountMask(mask);
         account.setManual(false);
+        account.setPlaidLinkedAt(java.time.ZonedDateTime.now());
         BankAccount saved = bankAccountRepository.save(account);
 
         if (saved.getCurrentBalance().compareTo(java.math.BigDecimal.ZERO) != 0) {
@@ -323,6 +325,7 @@ public class BankAccountService {
         account.setAccountMask(mask);
         account.setManual(false);
         account.setCurrentBalance(plaidBalance);
+        account.setPlaidLinkedAt(java.time.ZonedDateTime.now());
         BankAccount saved = bankAccountRepository.save(account);
         return toDTO(saved);
     }
