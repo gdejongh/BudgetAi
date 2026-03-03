@@ -30,10 +30,19 @@ public class AiAdviceCache {
     @Column(name = "expires_at", nullable = false)
     private ZonedDateTime expiresAt;
 
+    @Column(name = "generation_count", nullable = false)
+    private int generationCount = 0;
+
+    @Column(name = "generation_reset_at", nullable = false)
+    private ZonedDateTime generationResetAt;
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {
             this.createdAt = ZonedDateTime.now();
+        }
+        if (this.generationResetAt == null) {
+            this.generationResetAt = ZonedDateTime.now();
         }
     }
 }

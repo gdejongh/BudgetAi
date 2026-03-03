@@ -4,10 +4,12 @@ import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.AiAdviceDTO;
 import com.budget.budgetai.service.AiAdviceService;
 import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -34,5 +36,11 @@ public class AiAdviceController {
         UUID userId = SecurityUtils.getCurrentUserId();
         aiAdviceService.clearCache(userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @ExceptionHandler(AiAdviceService.RateLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleRateLimit(AiAdviceService.RateLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", ex.getMessage()));
     }
 }

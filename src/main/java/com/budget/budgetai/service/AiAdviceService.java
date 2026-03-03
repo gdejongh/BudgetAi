@@ -4,7 +4,6 @@ import com.budget.budgetai.dto.AiAdviceDTO;
 import com.budget.budgetai.model.AiAdviceCache;
 import com.budget.budgetai.repository.AiAdviceCacheRepository;
 import com.budget.budgetai.repository.AppUserRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -22,6 +21,7 @@ public class AiAdviceService {
     private static final Logger log = LoggerFactory.getLogger(AiAdviceService.class);
 
     private static final int CACHE_HOURS = 24;
+    private static final int MAX_GENERATIONS_PER_DAY = 3;
 
     private static final String SYSTEM_PROMPT = """
             You are a concise financial advisor analyzing an envelope-based budget. \
@@ -66,40 +66,93 @@ public class AiAdviceService {
         Optional<AiAdviceCache> cached = cacheRepository.findByAppUserId(userId);
         if (cached.isPresent() && cached.get().getExpiresAt().isAfter(ZonedDateTime.now())) {
             AiAdviceCache cache = cached.get();
-            return new AiAdviceDTO(cache.getAdviceText(), cache.getCreatedAt(), cache.getExpiresAt());
+            int remaining = getRefreshesRemaining(cache);
+            return new AiAdviceDTO(cache.getAdviceText(), cache.getCreatedAt(), cache.getExpiresAt(), remaining);
+        }
+
+        // Check rate limit before generating
+        AiAdviceCache cacheEntry = cached.orElseGet(() -> {
+            AiAdviceCache newCache = new AiAdviceCache();
+            newCache.setAppUser(appUserRepository.getReferenceById(userId));
+            newCache.setGenerationCount(0);
+            newCache.setGenerationResetAt(ZonedDateTime.now());
+            return newCache;
+        });
+        resetDailyCountIfNeeded(cacheEntry);
+
+        if (cacheEntry.getGenerationCount() >= MAX_GENERATIONS_PER_DAY) {
+            throw new RateLimitExceededException("Daily AI advice limit reached. Try again tomorrow.");
         }
 
         // Generate fresh advice
         String financialSummary = financialSummaryBuilder.buildSummary(userId);
 
-        log.info("Generating AI advice for user {}", userId);
+        log.info("Generating AI advice for user {} (generation {}/{})", userId,
+                cacheEntry.getGenerationCount() + 1, MAX_GENERATIONS_PER_DAY);
         String advice = chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(financialSummary)
                 .call()
                 .content();
 
-        // Cache the response
+        // Cache the response and increment counter
         ZonedDateTime now = ZonedDateTime.now();
         ZonedDateTime expiresAt = now.plusHours(CACHE_HOURS);
 
-        AiAdviceCache cache = cached.orElseGet(() -> {
-            AiAdviceCache newCache = new AiAdviceCache();
-            newCache.setAppUser(appUserRepository.getReferenceById(userId));
-            return newCache;
-        });
-        cache.setAdviceText(advice);
-        cache.setCreatedAt(now);
-        cache.setExpiresAt(expiresAt);
-        cacheRepository.save(cache);
+        cacheEntry.setAdviceText(advice);
+        cacheEntry.setCreatedAt(now);
+        cacheEntry.setExpiresAt(expiresAt);
+        cacheEntry.setGenerationCount(cacheEntry.getGenerationCount() + 1);
+        cacheRepository.save(cacheEntry);
 
-        return new AiAdviceDTO(advice, now, expiresAt);
+        int remaining = MAX_GENERATIONS_PER_DAY - cacheEntry.getGenerationCount();
+        return new AiAdviceDTO(advice, now, expiresAt, remaining);
     }
 
     /**
      * Clear the cached advice for a user, forcing fresh generation on next request.
+     * The rate limit counter is preserved — only the cached text is invalidated.
      */
     public void clearCache(UUID userId) {
-        cacheRepository.deleteByAppUserId(userId);
+        Optional<AiAdviceCache> cached = cacheRepository.findByAppUserId(userId);
+        if (cached.isPresent()) {
+            AiAdviceCache cache = cached.get();
+            cache.setExpiresAt(ZonedDateTime.now().minusSeconds(1));
+            cacheRepository.save(cache);
+        }
+    }
+
+    /**
+     * Get remaining refreshes for a user without generating advice.
+     */
+    public int getRefreshesRemaining(UUID userId) {
+        Optional<AiAdviceCache> cached = cacheRepository.findByAppUserId(userId);
+        if (cached.isEmpty()) {
+            return MAX_GENERATIONS_PER_DAY;
+        }
+        return getRefreshesRemaining(cached.get());
+    }
+
+    private int getRefreshesRemaining(AiAdviceCache cache) {
+        resetDailyCountIfNeeded(cache);
+        return Math.max(0, MAX_GENERATIONS_PER_DAY - cache.getGenerationCount());
+    }
+
+    private void resetDailyCountIfNeeded(AiAdviceCache cache) {
+        ZonedDateTime now = ZonedDateTime.now();
+        if (cache.getGenerationResetAt() == null
+                || cache.getGenerationResetAt().plusHours(24).isBefore(now)) {
+            cache.setGenerationCount(0);
+            cache.setGenerationResetAt(now);
+        }
+    }
+
+    /**
+     * Thrown when a user exceeds the daily AI advice generation limit.
+     */
+    public static class RateLimitExceededException extends RuntimeException {
+        public RateLimitExceededException(String message) {
+            super(message);
+        }
     }
 }
