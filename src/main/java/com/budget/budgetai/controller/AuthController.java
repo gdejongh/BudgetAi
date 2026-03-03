@@ -39,6 +39,10 @@ public class AuthController {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
 
+        if (!"dejonghgabe1@gmail.com".equalsIgnoreCase(loginRequest.getEmail())) {
+            return ResponseEntity.status(403).build();
+        }
+
         AppUser appUser = appUserRepository.findByEmail(loginRequest.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 

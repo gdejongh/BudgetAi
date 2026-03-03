@@ -176,7 +176,7 @@ public class PlaidService {
             }
 
             // Trigger initial transaction sync
-            syncTransactions(plaidItem, accessToken);
+            // syncTransactions(plaidItem, accessToken);
 
             return linkedAccounts;
         } catch (IOException e) {
