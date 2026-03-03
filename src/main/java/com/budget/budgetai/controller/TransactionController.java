@@ -3,6 +3,7 @@ package com.budget.budgetai.controller;
 import com.budget.budgetai.config.SecurityUtils;
 import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
+import com.budget.budgetai.dto.TransferRequest;
 import com.budget.budgetai.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -100,6 +101,14 @@ public class TransactionController {
     public ResponseEntity<TransactionDTO> createCCPayment(@Valid @RequestBody CCPaymentRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
         TransactionDTO created = transactionService.createCCPayment(request, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PostMapping("/transfer")
+    @Operation(operationId = "createTransfer", summary = "Transfer money between two accounts")
+    public ResponseEntity<List<TransactionDTO>> createTransfer(@Valid @RequestBody TransferRequest request) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        List<TransactionDTO> created = transactionService.createTransfer(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 }

@@ -2,5 +2,6 @@ package com.budget.budgetai.model;
 
 public enum TransactionType {
     STANDARD,
-    CC_PAYMENT
+    CC_PAYMENT,
+    TRANSFER
 }

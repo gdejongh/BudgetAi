@@ -2,6 +2,7 @@ package com.budget.budgetai.service;
 
 import com.budget.budgetai.dto.CCPaymentRequest;
 import com.budget.budgetai.dto.TransactionDTO;
+import com.budget.budgetai.dto.TransferRequest;
 import com.budget.budgetai.model.Envelope;
 import com.budget.budgetai.model.Transaction;
 import com.budget.budgetai.model.TransactionType;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -283,9 +285,11 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
 
-        // If this is a CC_PAYMENT, also delete the linked transaction and revert its
+        // If this is a CC_PAYMENT or TRANSFER, also delete the linked transaction and
+        // revert its
         // balance
-        if (transaction.getTransactionType() == TransactionType.CC_PAYMENT
+        if ((transaction.getTransactionType() == TransactionType.CC_PAYMENT
+                || transaction.getTransactionType() == TransactionType.TRANSFER)
                 && transaction.getLinkedTransaction() != null) {
             Transaction linked = transaction.getLinkedTransaction();
             UUID linkedAccountId = linked.getBankAccount().getId();
@@ -493,6 +497,87 @@ public class TransactionService {
         });
 
         return toDTO(savedBankTxn);
+    }
+
+    /**
+     * Creates an account-to-account transfer — two linked transactions:
+     * 1. Source side: negative amount (money leaves source)
+     * 2. Destination side: positive amount (money enters destination)
+     * No envelope assignments — transfers don't affect budgets.
+     * Returns both DTOs: source first, destination second.
+     */
+    public List<TransactionDTO> createTransfer(TransferRequest request, UUID appUserId) {
+        if (request == null) {
+            throw new IllegalArgumentException("TransferRequest cannot be null");
+        }
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Transfer amount must be greater than zero");
+        }
+        if (request.getSourceAccountId().equals(request.getDestinationAccountId())) {
+            throw new IllegalArgumentException("Source and destination accounts must be different");
+        }
+
+        // Ownership checks
+        bankAccountRepository.findById(request.getSourceAccountId()).ifPresent(account -> {
+            if (!account.getAppUser().getId().equals(appUserId)) {
+                throw new IllegalArgumentException("Source account does not belong to this user");
+            }
+        });
+        bankAccountRepository.findById(request.getDestinationAccountId()).ifPresent(account -> {
+            if (!account.getAppUser().getId().equals(appUserId)) {
+                throw new IllegalArgumentException("Destination account does not belong to this user");
+            }
+        });
+
+        String sourceName = bankAccountRepository.findById(request.getSourceAccountId())
+                .map(a -> a.getName()).orElse("Unknown");
+        String destName = bankAccountRepository.findById(request.getDestinationAccountId())
+                .map(a -> a.getName()).orElse("Unknown");
+
+        String description = request.getDescription() != null && !request.getDescription().isBlank()
+                ? request.getDescription()
+                : null;
+
+        // Source side: money leaves the source account
+        Transaction sourceTxn = new Transaction();
+        sourceTxn.setAppUser(appUserRepository.getReferenceById(appUserId));
+        sourceTxn.setBankAccount(bankAccountRepository.getReferenceById(request.getSourceAccountId()));
+        sourceTxn.setAmount(request.getAmount().negate());
+        sourceTxn.setDescription(description);
+        sourceTxn.setMerchantName("Transfer \u2192 " + destName);
+        sourceTxn.setTransactionDate(request.getTransactionDate());
+        sourceTxn.setTransactionType(TransactionType.TRANSFER);
+        Transaction savedSourceTxn = transactionRepository.save(sourceTxn);
+
+        // Destination side: money enters the destination account
+        Transaction destTxn = new Transaction();
+        destTxn.setAppUser(appUserRepository.getReferenceById(appUserId));
+        destTxn.setBankAccount(bankAccountRepository.getReferenceById(request.getDestinationAccountId()));
+        destTxn.setAmount(request.getAmount());
+        destTxn.setDescription(description);
+        destTxn.setMerchantName("Transfer from " + sourceName);
+        destTxn.setTransactionDate(request.getTransactionDate());
+        destTxn.setTransactionType(TransactionType.TRANSFER);
+        Transaction savedDestTxn = transactionRepository.save(destTxn);
+
+        // Link them bidirectionally
+        savedSourceTxn.setLinkedTransaction(savedDestTxn);
+        savedDestTxn.setLinkedTransaction(savedSourceTxn);
+        transactionRepository.save(savedSourceTxn);
+        transactionRepository.save(savedDestTxn);
+
+        // Update balances — handle CC accounts with inversion
+        BigDecimal sourceBalanceUpdate = isCreditCard(request.getSourceAccountId())
+                ? request.getAmount() // CC: negative amount means debt decreases (negate of negate)
+                : request.getAmount().negate();
+        bankAccountService.updateBalance(request.getSourceAccountId(), sourceBalanceUpdate);
+
+        BigDecimal destBalanceUpdate = isCreditCard(request.getDestinationAccountId())
+                ? request.getAmount().negate() // CC: positive amount means debt increases
+                : request.getAmount();
+        bankAccountService.updateBalance(request.getDestinationAccountId(), destBalanceUpdate);
+
+        return List.of(toDTO(savedSourceTxn), toDTO(savedDestTxn));
     }
 
     private boolean isCreditCard(UUID accountId) {
