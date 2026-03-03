@@ -111,6 +111,7 @@ public class BankAccountService {
 
         BigDecimal oldBalance = bankAccount.getCurrentBalance();
 
+        String oldName = bankAccount.getName();
         bankAccount.setName(bankAccountDTO.getName());
 
         // Credit card balances should only change through transactions, not manual
@@ -119,6 +120,15 @@ public class BankAccountService {
             bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
         }
         BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
+
+        // Keep the linked CC_PAYMENT envelope name in sync when the card name changes
+        if (updatedAccount.getAccountType() == AccountType.CREDIT_CARD
+                && !updatedAccount.getName().equals(oldName)) {
+            envelopeRepository.findByLinkedAccountId(updatedAccount.getId()).ifPresent(envelope -> {
+                envelope.setName(updatedAccount.getName() + " Payment");
+                envelopeRepository.save(envelope);
+            });
+        }
 
         BigDecimal difference = updatedAccount.getCurrentBalance().subtract(oldBalance);
         if (difference.compareTo(BigDecimal.ZERO) != 0) {
