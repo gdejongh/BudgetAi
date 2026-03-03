@@ -1,6 +1,14 @@
 spring:
   application:
     name: budgetai
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: claude-haiku-4-5-20251001
+          max-tokens: 500
+          temperature: 0.3
   jpa:
     hibernate:
       ddl-auto: validate
