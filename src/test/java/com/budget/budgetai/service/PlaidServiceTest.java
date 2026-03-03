@@ -4,6 +4,7 @@ import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.dto.ExchangeTokenRequest;
 import com.budget.budgetai.dto.PlaidAccountLink;
 import com.budget.budgetai.dto.PlaidItemDTO;
+import com.budget.budgetai.dto.SyncResultDTO;
 import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
@@ -831,5 +832,118 @@ class PlaidServiceTest {
 
                 assertEquals(1, result.size());
                 assertEquals("Test Bank", result.get(0).getInstitutionName());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncAllItems_syncsActiveItemsAndRefreshesBalances() throws IOException {
+                PlaidItem activeItem = new PlaidItem();
+                activeItem.setId(UUID.randomUUID());
+                activeItem.setAppUser(appUser);
+                activeItem.setItemId("item-1");
+                activeItem.setAccessToken("encrypted-token");
+                activeItem.setStatus(PlaidItemStatus.ACTIVE);
+                activeItem.setTransactionCursor("existing-cursor");
+
+                PlaidItem revokedItem = new PlaidItem();
+                revokedItem.setId(UUID.randomUUID());
+                revokedItem.setStatus(PlaidItemStatus.REVOKED);
+
+                when(plaidItemRepository.findByAppUserId(userId))
+                                .thenReturn(List.of(activeItem, revokedItem));
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("decrypted-token");
+
+                // Mock transactions sync (empty response)
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(Collections.emptyList())
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("new-cursor");
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                // Mock balance refresh (empty accounts)
+                AccountsGetResponse balanceBody = new AccountsGetResponse()
+                                .accounts(Collections.emptyList());
+                Call<AccountsGetResponse> balanceCall = mock(Call.class);
+                when(balanceCall.execute()).thenReturn(Response.success(balanceBody));
+                when(plaidApi.accountsBalanceGet(any())).thenReturn(balanceCall);
+
+                SyncResultDTO result = plaidService.syncAllItems(userId);
+
+                assertEquals(1, result.itemsSynced());
+                assertEquals(0, result.itemsFailed());
+                assertNotNull(result.message());
+                // Verify sync was called (transactionsSync) and balance refresh
+                verify(plaidApi).transactionsSync(any());
+                verify(plaidApi).accountsBalanceGet(any());
+        }
+
+        @Test
+        void syncAllItems_noActiveItems_returnsZero() {
+                when(plaidItemRepository.findByAppUserId(userId))
+                                .thenReturn(Collections.emptyList());
+
+                SyncResultDTO result = plaidService.syncAllItems(userId);
+
+                assertEquals(0, result.itemsSynced());
+                assertEquals(0, result.itemsFailed());
+                assertEquals("No active Plaid connections to sync", result.message());
+                verifyNoInteractions(plaidApi);
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncAllItems_partialFailure_reportsCorrectCounts() throws IOException {
+                PlaidItem goodItem = new PlaidItem();
+                goodItem.setId(UUID.randomUUID());
+                goodItem.setAppUser(appUser);
+                goodItem.setItemId("item-good");
+                goodItem.setAccessToken("encrypted-good");
+                goodItem.setStatus(PlaidItemStatus.ACTIVE);
+                goodItem.setTransactionCursor("cursor-good");
+
+                PlaidItem badItem = new PlaidItem();
+                badItem.setId(UUID.randomUUID());
+                badItem.setAppUser(appUser);
+                badItem.setItemId("item-bad");
+                badItem.setAccessToken("encrypted-bad");
+                badItem.setStatus(PlaidItemStatus.ACTIVE);
+                badItem.setTransactionCursor("cursor-bad");
+
+                when(plaidItemRepository.findByAppUserId(userId))
+                                .thenReturn(List.of(goodItem, badItem));
+
+                // Good item succeeds
+                when(encryptionService.decrypt("encrypted-good")).thenReturn("decrypted-good");
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(Collections.emptyList())
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("new-cursor");
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+
+                AccountsGetResponse balanceBody = new AccountsGetResponse()
+                                .accounts(Collections.emptyList());
+                Call<AccountsGetResponse> balanceCall = mock(Call.class);
+                when(balanceCall.execute()).thenReturn(Response.success(balanceBody));
+
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+                when(plaidApi.accountsBalanceGet(any())).thenReturn(balanceCall);
+
+                // Bad item fails on decrypt
+                when(encryptionService.decrypt("encrypted-bad"))
+                                .thenThrow(new RuntimeException("Decryption failed"));
+
+                SyncResultDTO result = plaidService.syncAllItems(userId);
+
+                assertEquals(1, result.itemsSynced());
+                assertEquals(1, result.itemsFailed());
+                assertTrue(result.message().contains("1 succeeded"));
+                assertTrue(result.message().contains("1 failed"));
         }
 }

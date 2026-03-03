@@ -55,4 +55,12 @@ public class PlaidController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/sync")
+    @Operation(operationId = "syncAccounts", summary = "Sync transactions and balances for all linked Plaid accounts")
+    public ResponseEntity<SyncResultDTO> syncAccounts() {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        SyncResultDTO result = plaidService.syncAllItems(userId);
+        return ResponseEntity.ok(result);
+    }
+
 }

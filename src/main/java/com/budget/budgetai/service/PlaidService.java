@@ -4,6 +4,7 @@ import com.budget.budgetai.dto.BankAccountDTO;
 import com.budget.budgetai.dto.ExchangeTokenRequest;
 import com.budget.budgetai.dto.PlaidAccountLink;
 import com.budget.budgetai.dto.PlaidItemDTO;
+import com.budget.budgetai.dto.SyncResultDTO;
 import com.budget.budgetai.model.AccountType;
 import com.budget.budgetai.model.AppUser;
 import com.budget.budgetai.model.BankAccount;
@@ -373,6 +374,34 @@ public class PlaidService {
                 .filter(item -> item.getStatus() != PlaidItemStatus.REVOKED)
                 .map(this::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    public SyncResultDTO syncAllItems(UUID userId) {
+        List<PlaidItem> activeItems = plaidItemRepository.findByAppUserId(userId).stream()
+                .filter(item -> item.getStatus() == PlaidItemStatus.ACTIVE)
+                .toList();
+
+        if (activeItems.isEmpty()) {
+            return new SyncResultDTO(0, 0, "No active Plaid connections to sync");
+        }
+
+        int successCount = 0;
+        int errorCount = 0;
+
+        for (PlaidItem item : activeItems) {
+            try {
+                syncTransactions(item);
+                refreshBalances(item);
+                successCount++;
+            } catch (Exception e) {
+                errorCount++;
+                log.error("Failed to sync Plaid item {} for user {}: {}",
+                        item.getItemId(), userId, e.getMessage(), e);
+            }
+        }
+
+        String message = String.format("Sync complete: %d succeeded, %d failed", successCount, errorCount);
+        return new SyncResultDTO(successCount, errorCount, message);
     }
 
     // --- Private helpers ---
