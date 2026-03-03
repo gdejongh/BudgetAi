@@ -4,3 +4,7 @@ spring:
     username: gabedejongh
     password:
     driver-class-name: org.postgresql.Driver
+
+plaid:
+  sync:
+    cron: 0 * * * * *

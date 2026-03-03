@@ -32,3 +32,5 @@ plaid:
   secret: ${PLAID_SECRET:}
   env: ${PLAID_ENV:sandbox}
   encryption-key: ${PLAID_ENCRYPTION_KEY:dev-encryption-key-change-in-prod-32b}
+  sync:
+    cron: ${PLAID_SYNC_CRON:0 0 6 * * *}

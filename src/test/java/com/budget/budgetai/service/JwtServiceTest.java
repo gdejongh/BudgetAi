@@ -208,22 +208,16 @@ class JwtServiceTest {
 
     @Test
     void revokeRefreshToken_tokenExists_deletesIt() {
-        RefreshToken token = new RefreshToken();
-        token.setToken("someToken");
-        when(refreshTokenRepository.findByToken("someToken")).thenReturn(Optional.of(token));
-
         jwtService.revokeRefreshToken("someToken");
 
-        verify(refreshTokenRepository).delete(token);
+        verify(refreshTokenRepository).deleteByTokenValue("someToken");
     }
 
     @Test
     void revokeRefreshToken_tokenNotExists_noOp() {
-        when(refreshTokenRepository.findByToken("nonexistent")).thenReturn(Optional.empty());
-
         jwtService.revokeRefreshToken("nonexistent");
 
-        verify(refreshTokenRepository, never()).delete(any());
+        verify(refreshTokenRepository).deleteByTokenValue("nonexistent");
     }
 
     // --- revokeAllUserRefreshTokens ---

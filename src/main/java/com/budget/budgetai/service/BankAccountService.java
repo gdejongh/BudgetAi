@@ -309,7 +309,7 @@ public class BankAccountService {
         account.setPlaidAccountId(plaidAccountId);
         account.setAccountMask(mask);
         account.setManual(false);
-        account.setPlaidLinkedAt(java.time.ZonedDateTime.now());
+        account.setPlaidLinkedAt(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC));
         BankAccount saved = bankAccountRepository.save(account);
 
         if (saved.getCurrentBalance().compareTo(java.math.BigDecimal.ZERO) != 0) {
@@ -330,13 +330,25 @@ public class BankAccountService {
             String plaidAccountId, String mask, java.math.BigDecimal plaidBalance) {
         BankAccount account = bankAccountRepository.findById(existingAccountId)
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + existingAccountId));
+
+        BigDecimal oldBalance = account.getCurrentBalance();
+
         account.setPlaidItem(plaidItem);
         account.setPlaidAccountId(plaidAccountId);
         account.setAccountMask(mask);
         account.setManual(false);
         account.setCurrentBalance(plaidBalance);
-        account.setPlaidLinkedAt(java.time.ZonedDateTime.now());
+        account.setPlaidLinkedAt(java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC));
         BankAccount saved = bankAccountRepository.save(account);
+
+        // Create an audit transaction for the balance difference so that the
+        // transaction-calculated balance stays consistent for previously-manual
+        // accounts.
+        BigDecimal difference = plaidBalance.subtract(oldBalance);
+        if (difference.compareTo(java.math.BigDecimal.ZERO) != 0) {
+            createAuditTransaction(saved, difference, "Balance Adjustment (Plaid Link)");
+        }
+
         return toDTO(saved);
     }
 }

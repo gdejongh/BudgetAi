@@ -5,6 +5,7 @@ import com.budget.budgetai.model.PlaidItemStatus;
 import com.budget.budgetai.repository.PlaidItemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -18,16 +19,19 @@ public class PlaidSyncScheduler {
     private final PlaidItemRepository plaidItemRepository;
     private final PlaidService plaidService;
 
+    @Value("${plaid.sync.cron:0 0 6 * * *}")
+    private String plaidSyncCron;
+
     public PlaidSyncScheduler(PlaidItemRepository plaidItemRepository, PlaidService plaidService) {
         this.plaidItemRepository = plaidItemRepository;
         this.plaidService = plaidService;
     }
 
     /**
-     * Runs daily at 6:00 AM to sync transactions and refresh balances
-     * for all active Plaid connections.
+     * Runs daily at 6:00 AM to sync transactions for all active Plaid connections.
+     * Balances are calculated from transactions, not refreshed from the Plaid API.
      */
-    @Scheduled(cron = "0 0 6 * * *")
+    @Scheduled(cron = "${plaid.sync.cron:0 0 6 * * *}")
     public void dailySync() {
         log.info("Starting daily Plaid sync...");
 
@@ -42,7 +46,6 @@ public class PlaidSyncScheduler {
                 log.debug("Syncing Plaid item {} for user {}", item.getItemId(),
                         item.getAppUser().getId());
                 plaidService.syncTransactions(item);
-                plaidService.refreshBalances(item);
                 successCount++;
             } catch (Exception e) {
                 errorCount++;

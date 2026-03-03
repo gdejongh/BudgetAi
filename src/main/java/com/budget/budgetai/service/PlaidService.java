@@ -41,6 +41,7 @@ import retrofit2.Response;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -50,6 +51,11 @@ import java.util.stream.Collectors;
 public class PlaidService {
 
     private static final Logger log = LoggerFactory.getLogger(PlaidService.class);
+
+    // Plaid transaction dates use the bank's local calendar date (US banks).
+    // We convert plaidLinkedAt to Eastern Time before extracting the date so the
+    // comparison is consistent regardless of the server's JVM timezone.
+    private static final ZoneId PLAID_DATE_ZONE = ZoneId.of("America/New_York");
 
     private final PlaidApi plaidApi;
     private final EncryptionService encryptionService;
@@ -82,7 +88,8 @@ public class PlaidService {
                     .clientName("AI Envelope Budget")
                     .products(List.of(Products.TRANSACTIONS))
                     .countryCodes(List.of(CountryCode.US))
-                    .language("en");
+                    .language("en")
+                    .webhook("https://example.com/webhook");
 
             Response<LinkTokenCreateResponse> response = plaidApi.linkTokenCreate(request).execute();
 
@@ -175,14 +182,69 @@ public class PlaidService {
                 }
             }
 
+            // Perform initial transaction sync to capture same-day transactions.
+            // These are already reflected in the initial Plaid balance, so we save
+            // them without adjusting balances. The cursor is saved so the scheduler
+            // only picks up new activity going forward.
+            syncInitialTransactions(plaidItem, accessToken);
+
             return linkedAccounts;
         } catch (IOException e) {
             throw new RuntimeException("Error communicating with Plaid API", e);
         }
     }
 
+    /**
+     * Fetches the initial transaction snapshot at link time.
+     * Transactions returned here are already reflected in the Plaid-reported
+     * balance,
+     * so they're stored without adjusting the bank account balance.
+     * The cursor is saved so the daily scheduler only picks up new activity.
+     */
+    private void syncInitialTransactions(PlaidItem plaidItem, String accessToken) {
+        try {
+            String cursor = null;
+            boolean hasMore = true;
+
+            while (hasMore) {
+                TransactionsSyncRequest syncRequest = new TransactionsSyncRequest()
+                        .accessToken(accessToken);
+                if (cursor != null) {
+                    syncRequest.cursor(cursor);
+                }
+
+                Response<TransactionsSyncResponse> syncResponse = plaidApi.transactionsSync(syncRequest).execute();
+
+                if (!syncResponse.isSuccessful() || syncResponse.body() == null) {
+                    log.error("Failed to fetch initial transactions for item {}", plaidItem.getItemId());
+                    return;
+                }
+
+                TransactionsSyncResponse body = syncResponse.body();
+
+                // Store transactions without balance adjustment (adjustBalance=false)
+                for (com.plaid.client.model.Transaction plaidTxn : body.getAdded()) {
+                    processAddedTransaction(plaidItem, plaidTxn, false);
+                }
+
+                cursor = body.getNextCursor();
+                hasMore = body.getHasMore();
+            }
+
+            // Save cursor so the daily scheduler continues from here
+            plaidItem.setTransactionCursor(cursor);
+            plaidItem.setLastSyncedAt(ZonedDateTime.now());
+            plaidItemRepository.save(plaidItem);
+
+        } catch (IOException e) {
+            log.error("Error fetching initial transactions for item {}", plaidItem.getItemId(), e);
+            // Non-fatal: the scheduler will pick up these transactions later
+        }
+    }
+
     public void syncTransactions(PlaidItem plaidItem) {
         String accessToken = encryptionService.decrypt(plaidItem.getAccessToken());
+
         syncTransactions(plaidItem, accessToken);
     }
 
@@ -209,9 +271,22 @@ public class PlaidService {
 
                 TransactionsSyncResponse body = syncResponse.body();
 
-                // Process added transactions
+                log.info(
+                        "Transactions sync response for item {}: added={}, modified={}, removed={}, hasMore={}, cursor={}",
+                        plaidItem.getItemId(),
+                        body.getAdded().size(),
+                        body.getModified().size(),
+                        body.getRemoved().size(),
+                        body.getHasMore(),
+                        body.getNextCursor() != null
+                                ? body.getNextCursor().substring(0, Math.min(20, body.getNextCursor().length())) + "..."
+                                : "null");
+
+                // Process added transactions (adjust balance since these are new)
                 for (com.plaid.client.model.Transaction plaidTxn : body.getAdded()) {
-                    processAddedTransaction(plaidItem, plaidTxn);
+                    log.info("Processing added transaction: id={}, date={}, amount={}, name={}",
+                            plaidTxn.getTransactionId(), plaidTxn.getDate(), plaidTxn.getAmount(), plaidTxn.getName());
+                    processAddedTransaction(plaidItem, plaidTxn, true);
                 }
 
                 // Process modified transactions
@@ -302,7 +377,18 @@ public class PlaidService {
 
     // --- Private helpers ---
 
-    private void processAddedTransaction(PlaidItem plaidItem, com.plaid.client.model.Transaction plaidTxn) {
+    /**
+     * Process an added transaction from Plaid's /transactions/sync response.
+     *
+     * @param plaidItem     the PlaidItem this transaction belongs to
+     * @param plaidTxn      the Plaid transaction data
+     * @param adjustBalance if true, update the bank account's currentBalance.
+     *                      Set to false for the initial snapshot (those
+     *                      transactions
+     *                      are already reflected in the initial Plaid balance).
+     */
+    private void processAddedTransaction(PlaidItem plaidItem, com.plaid.client.model.Transaction plaidTxn,
+            boolean adjustBalance) {
         // Skip if already exists (deduplication)
         if (transactionRepository.findByPlaidTransactionId(plaidTxn.getTransactionId()).isPresent()) {
             return;
@@ -320,7 +406,9 @@ public class PlaidService {
         // This prevents importing historical transactions that can't be meaningfully
         // assigned to envelopes retroactively.
         if (bankAccount.getPlaidLinkedAt() != null && plaidTxn.getDate() != null) {
-            LocalDate linkedDate = bankAccount.getPlaidLinkedAt().toLocalDate();
+            LocalDate linkedDate = bankAccount.getPlaidLinkedAt()
+                    .withZoneSameInstant(PLAID_DATE_ZONE)
+                    .toLocalDate();
             if (plaidTxn.getDate().isBefore(linkedDate)) {
                 log.debug("Skipping pre-link transaction {} (date {} before linked date {})",
                         plaidTxn.getTransactionId(), plaidTxn.getDate(), linkedDate);
@@ -361,14 +449,21 @@ public class PlaidService {
 
         transactionRepository.save(transaction);
 
-        // Note: We don't adjust bank account balance here because Plaid balances
-        // are synced separately via refreshBalances(). Adding balance adjustments
-        // would double-count since Plaid's balance already reflects these transactions.
+        // Adjust the bank account balance for new transactions from the scheduler.
+        // Skip adjustment for the initial snapshot (adjustBalance=false) since those
+        // transactions are already reflected in the initial Plaid balance.
+        if (adjustBalance) {
+            BigDecimal balanceUpdate = bankAccount.getAccountType() == AccountType.CREDIT_CARD
+                    ? amount.negate()
+                    : amount;
+            bankAccountService.updateBalance(bankAccount.getId(), balanceUpdate);
+        }
     }
 
     private void processModifiedTransaction(com.plaid.client.model.Transaction plaidTxn) {
         transactionRepository.findByPlaidTransactionId(plaidTxn.getTransactionId())
                 .ifPresent(existing -> {
+                    BigDecimal oldAmount = existing.getAmount();
                     BigDecimal newAmount = BigDecimal.valueOf(plaidTxn.getAmount()).negate();
                     existing.setAmount(newAmount);
                     existing.setDescription(plaidTxn.getName());
@@ -382,12 +477,30 @@ public class PlaidService {
                     }
 
                     transactionRepository.save(existing);
+
+                    // Adjust balance by the delta between old and new amounts
+                    BigDecimal delta = newAmount.subtract(oldAmount);
+                    if (delta.compareTo(BigDecimal.ZERO) != 0) {
+                        BankAccount bankAccount = existing.getBankAccount();
+                        BigDecimal balanceUpdate = bankAccount.getAccountType() == AccountType.CREDIT_CARD
+                                ? delta.negate()
+                                : delta;
+                        bankAccountService.updateBalance(bankAccount.getId(), balanceUpdate);
+                    }
                 });
     }
 
     private void processRemovedTransaction(RemovedTransaction removed) {
         transactionRepository.findByPlaidTransactionId(removed.getTransactionId())
-                .ifPresent(transactionRepository::delete);
+                .ifPresent(existing -> {
+                    // Reverse the balance effect of the removed transaction
+                    BankAccount bankAccount = existing.getBankAccount();
+                    BigDecimal reversal = bankAccount.getAccountType() == AccountType.CREDIT_CARD
+                            ? existing.getAmount() // CC: original was .negate(), so reverse is the amount itself
+                            : existing.getAmount().negate();
+                    bankAccountService.updateBalance(bankAccount.getId(), reversal);
+                    transactionRepository.delete(existing);
+                });
     }
 
     private BigDecimal getBalance(AccountBase account) {
@@ -434,5 +547,65 @@ public class PlaidService {
                 item.getLastSyncedAt(),
                 item.getCreatedAt(),
                 accounts);
+    }
+
+    /**
+     * Sandbox-only: resets transaction state and re-syncs from Plaid.
+     * Sandbox-only: creates fake test transactions for the item's linked accounts
+     * and adjusts balances accordingly. Bypasses Plaid API entirely.
+     */
+    public void sandboxFireWebhookAndSync(UUID userId, UUID plaidItemId) {
+        PlaidItem plaidItem = plaidItemRepository.findByIdAndAppUserId(plaidItemId, userId)
+                .orElseThrow(() -> new EntityNotFoundException("PlaidItem not found"));
+
+        List<BankAccount> linkedAccounts = bankAccountRepository.findByPlaidItemId(plaidItemId);
+        if (linkedAccounts.isEmpty()) {
+            throw new RuntimeException("No linked accounts for this Plaid item");
+        }
+
+        LocalDate today = LocalDate.now();
+        String[][] fakeTransactions = {
+                { "Starbucks", "FOOD_AND_DRINK", "Starbucks", "5.75" },
+                { "Amazon.com", "SHOPPING", "Amazon", "42.99" },
+                { "Shell Gas Station", "TRANSPORTATION", "Shell", "38.50" },
+                { "Netflix Subscription", "ENTERTAINMENT", "Netflix", "15.99" },
+                { "Whole Foods Market", "FOOD_AND_DRINK", "Whole Foods", "67.23" },
+        };
+
+        int created = 0;
+        for (BankAccount account : linkedAccounts) {
+            for (String[] txnData : fakeTransactions) {
+                String fakeId = "sandbox-" + UUID.randomUUID();
+
+                // Skip if somehow already exists
+                if (transactionRepository.findByPlaidTransactionId(fakeId).isPresent()) {
+                    continue;
+                }
+
+                BigDecimal amount = new BigDecimal(txnData[3]).negate(); // expense = negative
+
+                com.budget.budgetai.model.Transaction transaction = new com.budget.budgetai.model.Transaction();
+                transaction.setAppUser(plaidItem.getAppUser());
+                transaction.setBankAccount(account);
+                transaction.setAmount(amount);
+                transaction.setDescription(txnData[0]);
+                transaction.setTransactionDate(today);
+                transaction.setPlaidTransactionId(fakeId);
+                transaction.setPending(false);
+                transaction.setMerchantName(txnData[2]);
+                transaction.setPlaidCategory(txnData[1]);
+
+                transactionRepository.save(transaction);
+
+                // Adjust balance
+                BigDecimal balanceUpdate = account.getAccountType() == AccountType.CREDIT_CARD
+                        ? amount.negate()
+                        : amount;
+                bankAccountService.updateBalance(account.getId(), balanceUpdate);
+                created++;
+            }
+        }
+
+        log.info("Sandbox: created {} fake transactions for item {}", created, plaidItem.getItemId());
     }
 }

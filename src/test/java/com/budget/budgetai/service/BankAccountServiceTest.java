@@ -524,4 +524,54 @@ class BankAccountServiceTest {
                 && "Initial Balance".equals(txn.getDescription())
                 && txn.getBankAccount().getId().equals(accountId)));
     }
+
+    // --- linkPlaidAccount ---
+
+    @Test
+    void linkPlaidAccount_differentBalance_createsAuditTransaction() {
+        com.budget.budgetai.model.PlaidItem plaidItem = new com.budget.budgetai.model.PlaidItem();
+        plaidItem.setId(UUID.randomUUID());
+
+        BankAccount existingAccount = new BankAccount();
+        existingAccount.setId(accountId);
+        existingAccount.setAppUser(appUser);
+        existingAccount.setName("Checking");
+        existingAccount.setAccountType(AccountType.CHECKING);
+        existingAccount.setCurrentBalance(new BigDecimal("900.00"));
+        existingAccount.setCreatedAt(ZonedDateTime.now());
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(existingAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(existingAccount);
+
+        bankAccountService.linkPlaidAccount(accountId, plaidItem, "plaid-acc-1", "1234",
+                new BigDecimal("1000.00"));
+
+        // Balance difference is 1000 - 900 = 100
+        verify(transactionRepository).save(argThat(txn -> txn.getAmount().compareTo(new BigDecimal("100.00")) == 0
+                && "Balance Adjustment (Plaid Link)".equals(txn.getDescription())
+                && txn.getBankAccount().getId().equals(accountId)));
+    }
+
+    @Test
+    void linkPlaidAccount_sameBalance_noAuditTransaction() {
+        com.budget.budgetai.model.PlaidItem plaidItem = new com.budget.budgetai.model.PlaidItem();
+        plaidItem.setId(UUID.randomUUID());
+
+        BankAccount existingAccount = new BankAccount();
+        existingAccount.setId(accountId);
+        existingAccount.setAppUser(appUser);
+        existingAccount.setName("Checking");
+        existingAccount.setAccountType(AccountType.CHECKING);
+        existingAccount.setCurrentBalance(new BigDecimal("1000.00"));
+        existingAccount.setCreatedAt(ZonedDateTime.now());
+
+        when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(existingAccount));
+        when(bankAccountRepository.save(any(BankAccount.class))).thenReturn(existingAccount);
+
+        bankAccountService.linkPlaidAccount(accountId, plaidItem, "plaid-acc-1", "1234",
+                new BigDecimal("1000.00"));
+
+        // No audit transaction when balances match
+        verify(transactionRepository, never()).save(any(Transaction.class));
+    }
 }

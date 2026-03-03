@@ -22,6 +22,7 @@ import com.plaid.client.model.LinkTokenCreateRequest;
 import com.plaid.client.model.LinkTokenCreateResponse;
 import com.plaid.client.model.PersonalFinanceCategory;
 import com.plaid.client.model.Products;
+import com.plaid.client.model.RemovedTransaction;
 import com.plaid.client.model.TransactionsSyncResponse;
 import com.plaid.client.request.PlaidApi;
 import jakarta.persistence.EntityNotFoundException;
@@ -102,7 +103,6 @@ class PlaidServiceTest {
                 verify(plaidApi)
                                 .linkTokenCreate(argThat(request -> request.getUser().getClientUserId()
                                                 .equals(userId.toString())
-                                                && request.getProducts().contains(Products.BALANCE)
                                                 && request.getProducts().contains(Products.TRANSACTIONS)));
         }
 
@@ -270,6 +270,9 @@ class PlaidServiceTest {
                 assertEquals("txn-plaid-1", saved.getPlaidTransactionId());
                 assertEquals("FOOD_AND_DRINK", saved.getPlaidCategory());
                 assertFalse(saved.isPending());
+
+                // Verify balance was adjusted (checking account: amount directly)
+                verify(bankAccountService).updateBalance(bankAccount.getId(), BigDecimal.valueOf(-25.50));
         }
 
         @Test
@@ -444,7 +447,7 @@ class PlaidServiceTest {
                 bankAccount.setAppUser(appUser);
                 bankAccount.setAccountType(AccountType.CHECKING);
                 bankAccount.setPlaidAccountId("account-plaid-1");
-                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneId.systemDefault()));
+                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
                 when(bankAccountRepository.findByPlaidAccountId("account-plaid-1"))
                                 .thenReturn(Optional.of(bankAccount));
 
@@ -462,6 +465,350 @@ class PlaidServiceTest {
                 com.budget.budgetai.model.Transaction saved = txnCaptor.getValue();
                 assertEquals("txn-new", saved.getPlaidTransactionId());
                 assertEquals("New Purchase", saved.getDescription());
+
+                // Verify balance was adjusted for the post-link transaction only
+                verify(bankAccountService, times(1)).updateBalance(eq(bankAccount.getId()), any());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_includesSameDayTransactionsWhenLinkedAtIsUTC() throws IOException {
+                // Scenario: user links at 8pm ET on March 2 → stored as March 3 01:00 UTC.
+                // A transaction dated March 2 (Plaid's bank-local date) should NOT be skipped
+                // because the ET-converted linked date is still March 2.
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                // Transaction on the same calendar day as the link (in ET)
+                LocalDate txnDate = LocalDate.of(2026, 3, 2);
+                com.plaid.client.model.Transaction sameDayTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-same-day")
+                                .accountId("account-plaid-1")
+                                .amount(30.0)
+                                .name("Same Day Purchase")
+                                .date(txnDate)
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(sameDayTxn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-tz");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CHECKING);
+                bankAccount.setPlaidAccountId("account-plaid-1");
+                // 8pm ET on March 2 = March 3 01:00 UTC
+                bankAccount.setPlaidLinkedAt(
+                                java.time.ZonedDateTime.of(2026, 3, 3, 1, 0, 0, 0, java.time.ZoneOffset.UTC));
+                when(bankAccountRepository.findByPlaidAccountId("account-plaid-1"))
+                                .thenReturn(Optional.of(bankAccount));
+
+                when(transactionRepository.findByPlaidTransactionId(anyString()))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // The same-day transaction should be saved (not skipped)
+                ArgumentCaptor<com.budget.budgetai.model.Transaction> txnCaptor = ArgumentCaptor
+                                .forClass(com.budget.budgetai.model.Transaction.class);
+                verify(transactionRepository, times(1)).save(txnCaptor.capture());
+
+                com.budget.budgetai.model.Transaction saved = txnCaptor.getValue();
+                assertEquals("txn-same-day", saved.getPlaidTransactionId());
+                assertEquals("Same Day Purchase", saved.getDescription());
+
+                // Verify balance was adjusted
+                verify(bankAccountService).updateBalance(eq(bankAccount.getId()), any());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_modifiedTransaction_adjustsBalanceDelta() throws IOException {
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                // Modified transaction: amount changed from 25.50 to 30.00
+                com.plaid.client.model.Transaction modifiedPlaidTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-modified")
+                                .accountId("acc-1")
+                                .amount(30.0)
+                                .name("Updated Coffee Shop")
+                                .date(LocalDate.now())
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(Collections.emptyList())
+                                .modified(List.of(modifiedPlaidTxn))
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-mod");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                // Existing transaction in DB with old amount
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CHECKING);
+
+                com.budget.budgetai.model.Transaction existingTxn = new com.budget.budgetai.model.Transaction();
+                existingTxn.setId(UUID.randomUUID());
+                existingTxn.setAmount(BigDecimal.valueOf(-25.50)); // old amount (negated Plaid 25.50)
+                existingTxn.setBankAccount(bankAccount);
+                existingTxn.setPlaidTransactionId("txn-modified");
+
+                when(transactionRepository.findByPlaidTransactionId("txn-modified"))
+                                .thenReturn(Optional.of(existingTxn));
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Verify transaction was updated
+                verify(transactionRepository).save(existingTxn);
+                assertEquals(BigDecimal.valueOf(-30.0), existingTxn.getAmount());
+                assertEquals("Updated Coffee Shop", existingTxn.getDescription());
+
+                // Verify balance delta: new (-30.0) - old (-25.50) = -4.50
+                verify(bankAccountService).updateBalance(bankAccount.getId(), BigDecimal.valueOf(-4.50));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_removedTransaction_reversesBalance() throws IOException {
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                RemovedTransaction removedPlaidTxn = new RemovedTransaction()
+                                .transactionId("txn-removed");
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(Collections.emptyList())
+                                .modified(Collections.emptyList())
+                                .removed(List.of(removedPlaidTxn))
+                                .hasMore(false)
+                                .nextCursor("cursor-rem");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                // Existing transaction to be removed
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CHECKING);
+
+                com.budget.budgetai.model.Transaction existingTxn = new com.budget.budgetai.model.Transaction();
+                existingTxn.setId(UUID.randomUUID());
+                existingTxn.setAmount(BigDecimal.valueOf(-25.50)); // expense
+                existingTxn.setBankAccount(bankAccount);
+                existingTxn.setPlaidTransactionId("txn-removed");
+
+                when(transactionRepository.findByPlaidTransactionId("txn-removed"))
+                                .thenReturn(Optional.of(existingTxn));
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Verify transaction was deleted
+                verify(transactionRepository).delete(existingTxn);
+
+                // Verify balance was reversed: checking account, amount was -25.50,
+                // reversal = -(-25.50) = +25.50
+                verify(bankAccountService).updateBalance(bankAccount.getId(), BigDecimal.valueOf(25.50));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_creditCard_adjustsBalanceCorrectly() throws IOException {
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                // CC charge: Plaid amount 50.0 (charge) → our amount -50.0
+                com.plaid.client.model.Transaction plaidTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-cc-1")
+                                .accountId("cc-account-1")
+                                .amount(50.0)
+                                .name("CC Purchase")
+                                .date(LocalDate.now())
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(plaidTxn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-cc");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount ccAccount = new BankAccount();
+                ccAccount.setId(UUID.randomUUID());
+                ccAccount.setAppUser(appUser);
+                ccAccount.setAccountType(AccountType.CREDIT_CARD);
+                ccAccount.setPlaidAccountId("cc-account-1");
+                ccAccount.setPlaidLinkedAt(ZonedDateTime.now().minusDays(1));
+                when(bankAccountRepository.findByPlaidAccountId("cc-account-1"))
+                                .thenReturn(Optional.of(ccAccount));
+
+                when(transactionRepository.findByPlaidTransactionId("txn-cc-1"))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Verify transaction saved with negated amount
+                ArgumentCaptor<com.budget.budgetai.model.Transaction> txnCaptor = ArgumentCaptor
+                                .forClass(com.budget.budgetai.model.Transaction.class);
+                verify(transactionRepository).save(txnCaptor.capture());
+                assertEquals(BigDecimal.valueOf(-50.0), txnCaptor.getValue().getAmount());
+
+                // For CC: balance update = amount.negate() = -(-50.0) = +50.0
+                // (CC balance increases when charges are made)
+                verify(bankAccountService).updateBalance(ccAccount.getId(), BigDecimal.valueOf(50.0));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void exchangePublicToken_runsInitialSyncWithoutBalanceAdjustment() throws IOException {
+                String publicToken = "public-sandbox-token";
+                String accessToken = "access-sandbox-token";
+                String plaidItemId = "item-sandbox-id";
+                String plaidAccountId = "account-plaid-123";
+                String encryptedToken = "encrypted-access-token";
+
+                // Mock token exchange
+                ItemPublicTokenExchangeResponse exchangeBody = new ItemPublicTokenExchangeResponse()
+                                .accessToken(accessToken)
+                                .itemId(plaidItemId);
+                Call<ItemPublicTokenExchangeResponse> exchangeCall = mock(Call.class);
+                when(exchangeCall.execute()).thenReturn(Response.success(exchangeBody));
+                when(plaidApi.itemPublicTokenExchange(any())).thenReturn(exchangeCall);
+
+                when(encryptionService.encrypt(accessToken)).thenReturn(encryptedToken);
+                when(appUserRepository.findById(userId)).thenReturn(Optional.of(appUser));
+
+                PlaidItem savedItem = new PlaidItem();
+                savedItem.setId(UUID.randomUUID());
+                savedItem.setAppUser(appUser);
+                savedItem.setItemId(plaidItemId);
+                savedItem.setAccessToken(encryptedToken);
+                savedItem.setStatus(PlaidItemStatus.ACTIVE);
+                when(plaidItemRepository.save(any(PlaidItem.class))).thenReturn(savedItem);
+
+                // Mock balance fetch
+                AccountBase plaidAccount = new AccountBase()
+                                .accountId(plaidAccountId)
+                                .name("My Checking")
+                                .mask("4321")
+                                .type(com.plaid.client.model.AccountType.DEPOSITORY)
+                                .subtype(AccountSubtype.CHECKING)
+                                .balances(new AccountBalance().current(1500.00).available(1450.00));
+
+                AccountsGetResponse balanceBody = new AccountsGetResponse()
+                                .accounts(List.of(plaidAccount));
+                Call<AccountsGetResponse> balanceCall = mock(Call.class);
+                when(balanceCall.execute()).thenReturn(Response.success(balanceBody));
+                when(plaidApi.accountsBalanceGet(any())).thenReturn(balanceCall);
+
+                BankAccountDTO createdAccount = new BankAccountDTO();
+                createdAccount.setId(UUID.randomUUID());
+                createdAccount.setName("My Checking");
+                createdAccount.setAccountType("CHECKING");
+                createdAccount.setCurrentBalance(BigDecimal.valueOf(1450.0));
+                createdAccount.setManual(false);
+                when(bankAccountService.createPlaidAccount(any(), any(), eq(plaidAccountId), eq("4321")))
+                                .thenReturn(createdAccount);
+
+                // Mock initial sync: returns a same-day transaction
+                com.plaid.client.model.Transaction sameDayTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-initial-1")
+                                .accountId(plaidAccountId)
+                                .amount(25.0)
+                                .name("Same Day Coffee")
+                                .date(LocalDate.now())
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(sameDayTxn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("initial-cursor-1");
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CHECKING);
+                bankAccount.setPlaidAccountId(plaidAccountId);
+                bankAccount.setPlaidLinkedAt(ZonedDateTime.now());
+                when(bankAccountRepository.findByPlaidAccountId(plaidAccountId))
+                                .thenReturn(Optional.of(bankAccount));
+                when(transactionRepository.findByPlaidTransactionId("txn-initial-1"))
+                                .thenReturn(Optional.empty());
+
+                PlaidAccountLink link = new PlaidAccountLink(plaidAccountId, null, "My Checking", "CHECKING", "4321");
+                ExchangeTokenRequest request = new ExchangeTokenRequest(
+                                publicToken, "ins_109508", "Test Bank", List.of(link));
+
+                List<BankAccountDTO> result = plaidService.exchangePublicToken(userId, request);
+
+                assertEquals(1, result.size());
+
+                // Verify transaction was saved (from initial sync)
+                verify(transactionRepository).save(any(com.budget.budgetai.model.Transaction.class));
+
+                // Verify balance was NOT adjusted (initial snapshot transactions are already
+                // reflected in the Plaid balance)
+                verify(bankAccountService, never()).updateBalance(any(), any());
+
+                // Verify cursor was saved
+                ArgumentCaptor<PlaidItem> itemCaptor = ArgumentCaptor.forClass(PlaidItem.class);
+                verify(plaidItemRepository, atLeastOnce()).save(itemCaptor.capture());
+                List<PlaidItem> savedItems = itemCaptor.getAllValues();
+                // The last save should have the cursor from the initial sync
+                PlaidItem lastSaved = savedItems.get(savedItems.size() - 1);
+                assertEquals("initial-cursor-1", lastSaved.getTransactionCursor());
         }
 
         @Test
