@@ -125,14 +125,14 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
-    public List<TransactionDTO> getByBankAccountId(UUID bankAccountId) {
-        return transactionRepository.findByBankAccountId(bankAccountId).stream()
+    public List<TransactionDTO> getByBankAccountId(UUID bankAccountId, UUID appUserId) {
+        return transactionRepository.findByBankAccountIdAndAppUserId(bankAccountId, appUserId).stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
 
-    public List<TransactionDTO> getByEnvelopeId(UUID envelopeId) {
-        return transactionRepository.findByEnvelopeId(envelopeId).stream()
+    public List<TransactionDTO> getByEnvelopeId(UUID envelopeId, UUID appUserId) {
+        return transactionRepository.findByEnvelopeIdAndAppUserId(envelopeId, appUserId).stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }

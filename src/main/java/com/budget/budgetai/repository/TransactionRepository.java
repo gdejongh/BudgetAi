@@ -23,6 +23,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
         List<Transaction> findByBankAccountId(UUID bankAccountId);
 
         @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByBankAccountIdAndAppUserId(UUID bankAccountId, UUID appUserId);
+
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
         List<Transaction> findByTransactionDateBetween(LocalDate startDate, LocalDate endDate);
 
         @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
@@ -31,6 +34,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
         @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
         List<Transaction> findByEnvelopeId(UUID envelopeId);
+
+        @EntityGraph(attributePaths = { "appUser", "bankAccount", "envelope" })
+        List<Transaction> findByEnvelopeIdAndAppUserId(UUID envelopeId, UUID appUserId);
 
         @Query("SELECT t.envelope.id, COALESCE(SUM(t.amount), 0) " +
                         "FROM Transaction t " +

@@ -54,17 +54,14 @@ public class TransactionController {
     @Operation(operationId = "getTransactionsByBankAccount")
     public ResponseEntity<List<TransactionDTO>> getByBankAccountId(@PathVariable UUID bankAccountId) {
         UUID userId = SecurityUtils.getCurrentUserId();
-        List<TransactionDTO> transactions = transactionService.getByBankAccountId(bankAccountId);
-        transactions.forEach(t -> SecurityUtils.verifyOwnership(t.getAppUserId()));
-        return ResponseEntity.ok(transactions);
+        return ResponseEntity.ok(transactionService.getByBankAccountId(bankAccountId, userId));
     }
 
     @GetMapping("/by-envelope/{envelopeId}")
     @Operation(operationId = "getTransactionsByEnvelope")
     public ResponseEntity<List<TransactionDTO>> getByEnvelopeId(@PathVariable UUID envelopeId) {
-        List<TransactionDTO> transactions = transactionService.getByEnvelopeId(envelopeId);
-        transactions.forEach(t -> SecurityUtils.verifyOwnership(t.getAppUserId()));
-        return ResponseEntity.ok(transactions);
+        UUID userId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(transactionService.getByEnvelopeId(envelopeId, userId));
     }
 
     @GetMapping("/by-date-range")

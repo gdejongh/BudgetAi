@@ -326,10 +326,16 @@ public class BankAccountService {
         return toDTO(saved);
     }
 
-    public BankAccountDTO linkPlaidAccount(UUID existingAccountId, com.budget.budgetai.model.PlaidItem plaidItem,
+    public BankAccountDTO linkPlaidAccount(UUID existingAccountId, UUID userId,
+            com.budget.budgetai.model.PlaidItem plaidItem,
             String plaidAccountId, String mask, java.math.BigDecimal plaidBalance) {
         BankAccount account = bankAccountRepository.findById(existingAccountId)
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + existingAccountId));
+
+        if (!account.getAppUser().getId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You do not have permission to link this account");
+        }
 
         BigDecimal oldBalance = account.getCurrentBalance();
 
