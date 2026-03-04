@@ -11,6 +11,7 @@ import com.budget.budgetai.repository.EnvelopeCategoryRepository;
 import com.budget.budgetai.repository.EnvelopeRepository;
 import com.budget.budgetai.repository.TransactionRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.security.access.AccessDeniedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -594,7 +595,7 @@ class BankAccountServiceTest {
 
         when(bankAccountRepository.findById(accountId)).thenReturn(Optional.of(existingAccount));
 
-        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+        assertThrows(AccessDeniedException.class,
                 () -> bankAccountService.linkPlaidAccount(accountId, userId, plaidItem, "plaid-acc-1", "1234",
                         new BigDecimal("1000.00")));
 
