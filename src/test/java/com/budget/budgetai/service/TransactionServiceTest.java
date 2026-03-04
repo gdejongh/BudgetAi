@@ -282,9 +282,10 @@ class TransactionServiceTest {
 
     @Test
     void getByBankAccountId_withResults_returnsDTOs() {
-        when(transactionRepository.findByBankAccountId(bankAccountId)).thenReturn(List.of(transaction));
+        when(transactionRepository.findByBankAccountIdAndAppUserId(bankAccountId, userId))
+                .thenReturn(List.of(transaction));
 
-        List<TransactionDTO> result = transactionService.getByBankAccountId(bankAccountId);
+        List<TransactionDTO> result = transactionService.getByBankAccountId(bankAccountId, userId);
 
         assertEquals(1, result.size());
         assertEquals(bankAccountId, result.get(0).getBankAccountId());
@@ -292,9 +293,21 @@ class TransactionServiceTest {
 
     @Test
     void getByBankAccountId_empty_returnsEmptyList() {
-        when(transactionRepository.findByBankAccountId(bankAccountId)).thenReturn(Collections.emptyList());
+        when(transactionRepository.findByBankAccountIdAndAppUserId(bankAccountId, userId))
+                .thenReturn(Collections.emptyList());
 
-        List<TransactionDTO> result = transactionService.getByBankAccountId(bankAccountId);
+        List<TransactionDTO> result = transactionService.getByBankAccountId(bankAccountId, userId);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getByBankAccountId_differentUser_returnsEmptyList() {
+        UUID otherUserId = UUID.randomUUID();
+        when(transactionRepository.findByBankAccountIdAndAppUserId(bankAccountId, otherUserId))
+                .thenReturn(Collections.emptyList());
+
+        List<TransactionDTO> result = transactionService.getByBankAccountId(bankAccountId, otherUserId);
 
         assertTrue(result.isEmpty());
     }
@@ -303,9 +316,10 @@ class TransactionServiceTest {
 
     @Test
     void getByEnvelopeId_withResults_returnsDTOs() {
-        when(transactionRepository.findByEnvelopeId(envelopeId)).thenReturn(List.of(transaction));
+        when(transactionRepository.findByEnvelopeIdAndAppUserId(envelopeId, userId))
+                .thenReturn(List.of(transaction));
 
-        List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId);
+        List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId, userId);
 
         assertEquals(1, result.size());
         assertEquals(envelopeId, result.get(0).getEnvelopeId());
@@ -313,9 +327,21 @@ class TransactionServiceTest {
 
     @Test
     void getByEnvelopeId_empty_returnsEmptyList() {
-        when(transactionRepository.findByEnvelopeId(envelopeId)).thenReturn(Collections.emptyList());
+        when(transactionRepository.findByEnvelopeIdAndAppUserId(envelopeId, userId))
+                .thenReturn(Collections.emptyList());
 
-        List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId);
+        List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId, userId);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getByEnvelopeId_differentUser_returnsEmptyList() {
+        UUID otherUserId = UUID.randomUUID();
+        when(transactionRepository.findByEnvelopeIdAndAppUserId(envelopeId, otherUserId))
+                .thenReturn(Collections.emptyList());
+
+        List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId, otherUserId);
 
         assertTrue(result.isEmpty());
     }
