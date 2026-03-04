@@ -164,9 +164,9 @@ public class PlaidService {
                 String mask = plaidAccount.getMask();
 
                 if (link.getExistingBankAccountId() != null) {
-                    // Link to existing account
+                    // Link to existing account (ownership verified inside linkPlaidAccount)
                     BankAccountDTO linked = bankAccountService.linkPlaidAccount(
-                            link.getExistingBankAccountId(), plaidItem,
+                            link.getExistingBankAccountId(), userId, plaidItem,
                             link.getPlaidAccountId(), mask, balance);
                     linkedAccounts.add(linked);
                 } else {
