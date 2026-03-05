@@ -391,7 +391,6 @@ public class PlaidService {
         for (PlaidItem item : activeItems) {
             try {
                 syncTransactions(item);
-                refreshBalances(item);
                 successCount++;
             } catch (Exception e) {
                 errorCount++;
