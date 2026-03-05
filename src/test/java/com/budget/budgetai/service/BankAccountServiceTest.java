@@ -176,27 +176,6 @@ class BankAccountServiceTest {
         assertThrows(EntityNotFoundException.class, () -> bankAccountService.getById(accountId));
     }
 
-    // --- getAll ---
-
-    @Test
-    void getAll_returnsAll() {
-        when(bankAccountRepository.findAll()).thenReturn(List.of(bankAccount));
-
-        List<BankAccountDTO> result = bankAccountService.getAll();
-
-        assertEquals(1, result.size());
-        assertEquals("Checking", result.get(0).getName());
-    }
-
-    @Test
-    void getAll_empty_returnsEmptyList() {
-        when(bankAccountRepository.findAll()).thenReturn(Collections.emptyList());
-
-        List<BankAccountDTO> result = bankAccountService.getAll();
-
-        assertTrue(result.isEmpty());
-    }
-
     // --- getByAppUserId ---
 
     @Test
@@ -531,6 +510,7 @@ class BankAccountServiceTest {
     void linkPlaidAccount_differentBalance_createsAuditTransaction() {
         com.budget.budgetai.model.PlaidItem plaidItem = new com.budget.budgetai.model.PlaidItem();
         plaidItem.setId(UUID.randomUUID());
+        plaidItem.setAppUser(appUser);
 
         BankAccount existingAccount = new BankAccount();
         existingAccount.setId(accountId);
@@ -556,6 +536,7 @@ class BankAccountServiceTest {
     void linkPlaidAccount_sameBalance_noAuditTransaction() {
         com.budget.budgetai.model.PlaidItem plaidItem = new com.budget.budgetai.model.PlaidItem();
         plaidItem.setId(UUID.randomUUID());
+        plaidItem.setAppUser(appUser);
 
         BankAccount existingAccount = new BankAccount();
         existingAccount.setId(accountId);

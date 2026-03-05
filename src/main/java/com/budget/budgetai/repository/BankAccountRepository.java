@@ -18,7 +18,7 @@ public interface BankAccountRepository extends JpaRepository<BankAccount, UUID> 
     @EntityGraph(attributePaths = { "appUser" })
     List<BankAccount> findByAppUserIdAndName(UUID appUserId, String name);
 
-    Optional<BankAccount> findByPlaidAccountId(String plaidAccountId);
+    Optional<BankAccount> findByPlaidAccountIdAndPlaidItemId(String plaidAccountId, UUID plaidItemId);
 
     List<BankAccount> findByPlaidItemId(UUID plaidItemId);
 }

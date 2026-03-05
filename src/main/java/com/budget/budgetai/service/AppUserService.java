@@ -56,12 +56,6 @@ public class AppUserService {
                 .orElseThrow(() -> new EntityNotFoundException("AppUser not found with email: " + email));
     }
 
-    public List<AppUserDTO> getAll() {
-        return appUserRepository.findAll().stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-    }
-
     public AppUserDTO update(UUID id, AppUserDTO appUserDTO) {
         if (appUserDTO == null) {
             throw new IllegalArgumentException("AppUserDTO cannot be null");

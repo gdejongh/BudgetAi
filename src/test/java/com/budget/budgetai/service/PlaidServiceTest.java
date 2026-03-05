@@ -247,7 +247,7 @@ class PlaidServiceTest {
                 bankAccount.setAccountType(AccountType.CHECKING);
                 bankAccount.setPlaidAccountId("account-plaid-1");
                 bankAccount.setPlaidLinkedAt(ZonedDateTime.now().minusDays(1));
-                when(bankAccountRepository.findByPlaidAccountId("account-plaid-1"))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
                                 .thenReturn(Optional.of(bankAccount));
 
                 // Mock that this transaction doesn't exist yet
@@ -344,7 +344,7 @@ class PlaidServiceTest {
                 Call<AccountsGetResponse> call = mock(Call.class);
                 when(call.execute()).thenReturn(Response.success(response));
                 when(plaidApi.accountsBalanceGet(any())).thenReturn(call);
-                when(bankAccountRepository.findByPlaidAccountId("plaid-acc-1"))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("plaid-acc-1", plaidItem.getId()))
                                 .thenReturn(Optional.of(bankAccount));
                 when(bankAccountRepository.save(any())).thenReturn(bankAccount);
 
@@ -449,7 +449,7 @@ class PlaidServiceTest {
                 bankAccount.setAccountType(AccountType.CHECKING);
                 bankAccount.setPlaidAccountId("account-plaid-1");
                 bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
-                when(bankAccountRepository.findByPlaidAccountId("account-plaid-1"))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
                                 .thenReturn(Optional.of(bankAccount));
 
                 when(transactionRepository.findByPlaidTransactionId(anyString()))
@@ -515,7 +515,7 @@ class PlaidServiceTest {
                 // 8pm ET on March 2 = March 3 01:00 UTC
                 bankAccount.setPlaidLinkedAt(
                                 java.time.ZonedDateTime.of(2026, 3, 3, 1, 0, 0, 0, java.time.ZoneOffset.UTC));
-                when(bankAccountRepository.findByPlaidAccountId("account-plaid-1"))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
                                 .thenReturn(Optional.of(bankAccount));
 
                 when(transactionRepository.findByPlaidTransactionId(anyString()))
@@ -686,7 +686,7 @@ class PlaidServiceTest {
                 ccAccount.setAccountType(AccountType.CREDIT_CARD);
                 ccAccount.setPlaidAccountId("cc-account-1");
                 ccAccount.setPlaidLinkedAt(ZonedDateTime.now().minusDays(1));
-                when(bankAccountRepository.findByPlaidAccountId("cc-account-1"))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("cc-account-1", plaidItem.getId()))
                                 .thenReturn(Optional.of(ccAccount));
 
                 when(transactionRepository.findByPlaidTransactionId("txn-cc-1"))
@@ -783,7 +783,7 @@ class PlaidServiceTest {
                 bankAccount.setAccountType(AccountType.CHECKING);
                 bankAccount.setPlaidAccountId(plaidAccountId);
                 bankAccount.setPlaidLinkedAt(ZonedDateTime.now());
-                when(bankAccountRepository.findByPlaidAccountId(plaidAccountId))
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId(eq(plaidAccountId), any(UUID.class)))
                                 .thenReturn(Optional.of(bankAccount));
                 when(transactionRepository.findByPlaidTransactionId("txn-initial-1"))
                                 .thenReturn(Optional.empty());

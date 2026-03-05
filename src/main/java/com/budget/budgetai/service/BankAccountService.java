@@ -84,12 +84,6 @@ public class BankAccountService {
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
     }
 
-    public List<BankAccountDTO> getAll() {
-        return bankAccountRepository.findAll().stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-    }
-
     public List<BankAccountDTO> getByAppUserId(UUID appUserId) {
         return bankAccountRepository.findByAppUserId(appUserId).stream()
                 .map(this::toDTO)
@@ -292,8 +286,8 @@ public class BankAccountService {
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + id));
     }
 
-    public java.util.Optional<BankAccount> findByPlaidAccountId(String plaidAccountId) {
-        return bankAccountRepository.findByPlaidAccountId(plaidAccountId);
+    public java.util.Optional<BankAccount> findByPlaidAccountIdAndPlaidItemId(String plaidAccountId, UUID plaidItemId) {
+        return bankAccountRepository.findByPlaidAccountIdAndPlaidItemId(plaidAccountId, plaidItemId);
     }
 
     public List<BankAccountDTO> getByPlaidItemId(UUID plaidItemId) {
@@ -330,6 +324,11 @@ public class BankAccountService {
             String plaidAccountId, String mask, java.math.BigDecimal plaidBalance) {
         BankAccount account = bankAccountRepository.findById(existingAccountId)
                 .orElseThrow(() -> new EntityNotFoundException("BankAccount not found with id: " + existingAccountId));
+
+        // Verify the account belongs to the same user as the Plaid item
+        if (!account.getAppUser().getId().equals(plaidItem.getAppUser().getId())) {
+            throw new IllegalArgumentException("Bank account does not belong to the current user");
+        }
 
         BigDecimal oldBalance = account.getCurrentBalance();
 

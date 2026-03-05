@@ -331,7 +331,7 @@ public class PlaidService {
             }
 
             for (AccountBase plaidAccount : response.body().getAccounts()) {
-                bankAccountRepository.findByPlaidAccountId(plaidAccount.getAccountId())
+                bankAccountRepository.findByPlaidAccountIdAndPlaidItemId(plaidAccount.getAccountId(), plaidItem.getId())
                         .ifPresent(bankAccount -> {
                             BigDecimal newBalance = getBalance(plaidAccount);
                             bankAccount.setCurrentBalance(newBalance);
@@ -424,7 +424,8 @@ public class PlaidService {
         }
 
         // Find the linked bank account
-        Optional<BankAccount> bankAccountOpt = bankAccountRepository.findByPlaidAccountId(plaidTxn.getAccountId());
+        Optional<BankAccount> bankAccountOpt = bankAccountRepository
+                .findByPlaidAccountIdAndPlaidItemId(plaidTxn.getAccountId(), plaidItem.getId());
         if (bankAccountOpt.isEmpty()) {
             log.warn("No linked bank account found for Plaid account {}", plaidTxn.getAccountId());
             return;

@@ -175,28 +175,6 @@ class EnvelopeServiceTest {
         assertThrows(EntityNotFoundException.class, () -> envelopeService.getById(envelopeId));
     }
 
-    // --- getAll ---
-
-    @Test
-    void getAll_returnsAll() {
-        when(envelopeRepository.findAll()).thenReturn(List.of(envelope));
-        when(envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelopeId)).thenReturn(new BigDecimal("500.00"));
-
-        List<EnvelopeDTO> result = envelopeService.getAll();
-
-        assertEquals(1, result.size());
-        assertEquals("Groceries", result.get(0).getName());
-    }
-
-    @Test
-    void getAll_empty_returnsEmptyList() {
-        when(envelopeRepository.findAll()).thenReturn(Collections.emptyList());
-
-        List<EnvelopeDTO> result = envelopeService.getAll();
-
-        assertTrue(result.isEmpty());
-    }
-
     // --- getByAppUserId ---
 
     @Test

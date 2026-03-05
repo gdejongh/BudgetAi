@@ -85,12 +85,6 @@ public class EnvelopeService {
                 .orElseThrow(() -> new EntityNotFoundException("Envelope not found with id: " + id));
     }
 
-    public List<EnvelopeDTO> getAll() {
-        return envelopeRepository.findAll().stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-    }
-
     public List<EnvelopeDTO> getByAppUserId(UUID appUserId) {
         List<Envelope> envelopes = envelopeRepository.findByAppUserId(appUserId);
         // Build a map of envelopeId -> total allocated (sum of all monthly allocations)

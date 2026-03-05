@@ -237,26 +237,6 @@ class TransactionServiceTest {
         assertThrows(EntityNotFoundException.class, () -> transactionService.getById(transactionId));
     }
 
-    // --- getAll ---
-
-    @Test
-    void getAll_returnsAll() {
-        when(transactionRepository.findAll()).thenReturn(List.of(transaction));
-
-        List<TransactionDTO> result = transactionService.getAll();
-
-        assertEquals(1, result.size());
-    }
-
-    @Test
-    void getAll_empty_returnsEmptyList() {
-        when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
-
-        List<TransactionDTO> result = transactionService.getAll();
-
-        assertTrue(result.isEmpty());
-    }
-
     // --- getByAppUserId ---
 
     @Test
@@ -316,32 +296,6 @@ class TransactionServiceTest {
         when(transactionRepository.findByEnvelopeId(envelopeId)).thenReturn(Collections.emptyList());
 
         List<TransactionDTO> result = transactionService.getByEnvelopeId(envelopeId);
-
-        assertTrue(result.isEmpty());
-    }
-
-    // --- getByTransactionDateBetween ---
-
-    @Test
-    void getByTransactionDateBetween_withResults_returnsDTOs() {
-        LocalDate start = LocalDate.of(2026, 2, 1);
-        LocalDate end = LocalDate.of(2026, 2, 28);
-
-        when(transactionRepository.findByTransactionDateBetween(start, end)).thenReturn(List.of(transaction));
-
-        List<TransactionDTO> result = transactionService.getByTransactionDateBetween(start, end);
-
-        assertEquals(1, result.size());
-    }
-
-    @Test
-    void getByTransactionDateBetween_empty_returnsEmptyList() {
-        LocalDate start = LocalDate.of(2025, 1, 1);
-        LocalDate end = LocalDate.of(2025, 1, 31);
-
-        when(transactionRepository.findByTransactionDateBetween(start, end)).thenReturn(Collections.emptyList());
-
-        List<TransactionDTO> result = transactionService.getByTransactionDateBetween(start, end);
 
         assertTrue(result.isEmpty());
     }

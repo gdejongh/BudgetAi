@@ -138,30 +138,6 @@ class AppUserServiceTest {
         assertThrows(EntityNotFoundException.class, () -> appUserService.getByEmail("nonexistent@example.com"));
     }
 
-    // --- getAll ---
-
-    @Test
-    void getAll_returnsAllUsers() {
-        AppUser secondUser = new AppUser();
-        secondUser.setId(UUID.randomUUID());
-        secondUser.setEmail("user2@example.com");
-
-        when(appUserRepository.findAll()).thenReturn(List.of(appUser, secondUser));
-
-        List<AppUserDTO> result = appUserService.getAll();
-
-        assertEquals(2, result.size());
-    }
-
-    @Test
-    void getAll_empty_returnsEmptyList() {
-        when(appUserRepository.findAll()).thenReturn(Collections.emptyList());
-
-        List<AppUserDTO> result = appUserService.getAll();
-
-        assertTrue(result.isEmpty());
-    }
-
     // --- update ---
 
     @Test

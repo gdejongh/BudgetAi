@@ -113,12 +113,6 @@ public class TransactionService {
                 .orElseThrow(() -> new EntityNotFoundException("Transaction not found with id: " + id));
     }
 
-    public List<TransactionDTO> getAll() {
-        return transactionRepository.findAll().stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-    }
-
     public List<TransactionDTO> getByAppUserId(UUID appUserId) {
         return transactionRepository.findByAppUserId(appUserId).stream()
                 .map(this::toDTO)
@@ -133,12 +127,6 @@ public class TransactionService {
 
     public List<TransactionDTO> getByEnvelopeId(UUID envelopeId) {
         return transactionRepository.findByEnvelopeId(envelopeId).stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
-    }
-
-    public List<TransactionDTO> getByTransactionDateBetween(LocalDate startDate, LocalDate endDate) {
-        return transactionRepository.findByTransactionDateBetween(startDate, endDate).stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
