@@ -63,4 +63,12 @@ public class PlaidController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/items/{id}/resync")
+    @Operation(operationId = "resyncPlaidItem", summary = "Reset cursor and re-sync transactions from scratch for a specific Plaid connection")
+    public ResponseEntity<Void> resyncFromScratch(@PathVariable UUID id) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        plaidService.resyncFromScratch(userId, id);
+        return ResponseEntity.ok().build();
+    }
+
 }

@@ -403,7 +403,46 @@ public class PlaidService {
         return new SyncResultDTO(successCount, errorCount, message);
     }
 
+    /**
+     * Resets the transaction cursor for a specific PlaidItem and re-syncs from
+     * scratch with adjustBalance=false. This is used to recover transactions that
+     * were missed due to cursor advancement past filtered transactions (e.g., the
+     * pre-link date filter incorrectly skipped them). Already-saved transactions
+     * are deduplicated, so this is safe to call at any time.
+     * <p>
+     * Balance is NOT adjusted because the initial Plaid-reported balance already
+     * includes these transactions.
+     */
+    public void resyncFromScratch(UUID userId, UUID plaidItemId) {
+        PlaidItem plaidItem = plaidItemRepository.findByIdAndAppUserId(plaidItemId, userId)
+                .orElseThrow(() -> new EntityNotFoundException("PlaidItem not found"));
+
+        log.info("Resync from scratch requested for item {} (user {})", plaidItem.getItemId(), userId);
+
+        String accessToken = encryptionService.decrypt(plaidItem.getAccessToken());
+
+        // Reset cursor so Plaid re-delivers all transactions
+        plaidItem.setTransactionCursor(null);
+        plaidItemRepository.save(plaidItem);
+
+        // Re-sync with adjustBalance=false (same as initial sync)
+        syncInitialTransactions(plaidItem, accessToken);
+
+        log.info("Resync from scratch completed for item {}", plaidItem.getItemId());
+    }
+
     // --- Private helpers ---
+
+    /**
+     * Return the later of two nullable LocalDate values.
+     * If only one is non-null, return that one. If both are null, return null.
+     */
+    private LocalDate latestPlaidDate(LocalDate authorizedDate, LocalDate postedDate) {
+        if (authorizedDate != null && postedDate != null) {
+            return authorizedDate.isAfter(postedDate) ? authorizedDate : postedDate;
+        }
+        return authorizedDate != null ? authorizedDate : postedDate;
+    }
 
     /**
      * Process an added transaction from Plaid's /transactions/sync response.
@@ -434,13 +473,19 @@ public class PlaidService {
         // Skip transactions that occurred before the account was linked via Plaid.
         // This prevents importing historical transactions that can't be meaningfully
         // assigned to envelopes retroactively.
-        if (bankAccount.getPlaidLinkedAt() != null && plaidTxn.getDate() != null) {
+        // Use the LATER of authorizedDate and date so that if either date is on or
+        // after the link date the transaction passes the filter. This handles credit
+        // card edge cases where authorizedDate (swipe) and date (posted) can straddle
+        // the link boundary.
+        LocalDate txnDate = latestPlaidDate(plaidTxn.getAuthorizedDate(), plaidTxn.getDate());
+        if (bankAccount.getPlaidLinkedAt() != null && txnDate != null) {
             LocalDate linkedDate = bankAccount.getPlaidLinkedAt()
                     .withZoneSameInstant(PLAID_DATE_ZONE)
                     .toLocalDate();
-            if (plaidTxn.getDate().isBefore(linkedDate)) {
-                log.debug("Skipping pre-link transaction {} (date {} before linked date {})",
-                        plaidTxn.getTransactionId(), plaidTxn.getDate(), linkedDate);
+            if (txnDate.isBefore(linkedDate)) {
+                log.info("Skipping pre-link transaction {} '{}' (authorizedDate={}, date={}, linkedDate={})",
+                        plaidTxn.getTransactionId(), plaidTxn.getName(),
+                        plaidTxn.getAuthorizedDate(), plaidTxn.getDate(), linkedDate);
                 return;
             }
         }

@@ -413,23 +413,25 @@ class PlaidServiceTest {
 
                 when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
 
-                // Transaction dated before the account was linked
+                // Transaction authorized before the account was linked
                 LocalDate linkedDate = LocalDate.of(2026, 3, 1);
                 com.plaid.client.model.Transaction preLinkTxn = new com.plaid.client.model.Transaction()
                                 .transactionId("txn-old")
                                 .accountId("account-plaid-1")
                                 .amount(50.0)
                                 .name("Old Purchase")
-                                .date(linkedDate.minusDays(5))
+                                .date(linkedDate.minusDays(6))
+                                .authorizedDate(linkedDate.minusDays(5))
                                 .pending(false);
 
-                // Transaction dated on or after the linked date
+                // Transaction authorized on or after the linked date
                 com.plaid.client.model.Transaction postLinkTxn = new com.plaid.client.model.Transaction()
                                 .transactionId("txn-new")
                                 .accountId("account-plaid-1")
                                 .amount(15.0)
                                 .name("New Purchase")
-                                .date(linkedDate.plusDays(1))
+                                .date(linkedDate)
+                                .authorizedDate(linkedDate.plusDays(1))
                                 .pending(false);
 
                 TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
@@ -494,6 +496,7 @@ class PlaidServiceTest {
                                 .amount(30.0)
                                 .name("Same Day Purchase")
                                 .date(txnDate)
+                                .authorizedDate(txnDate)
                                 .pending(false);
 
                 TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
@@ -864,21 +867,13 @@ class PlaidServiceTest {
                 when(syncCall.execute()).thenReturn(Response.success(syncBody));
                 when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
 
-                // Mock balance refresh (empty accounts)
-                AccountsGetResponse balanceBody = new AccountsGetResponse()
-                                .accounts(Collections.emptyList());
-                Call<AccountsGetResponse> balanceCall = mock(Call.class);
-                when(balanceCall.execute()).thenReturn(Response.success(balanceBody));
-                when(plaidApi.accountsBalanceGet(any())).thenReturn(balanceCall);
-
                 SyncResultDTO result = plaidService.syncAllItems(userId);
 
                 assertEquals(1, result.itemsSynced());
                 assertEquals(0, result.itemsFailed());
                 assertNotNull(result.message());
-                // Verify sync was called (transactionsSync) and balance refresh
+                // Verify sync was called (transactionsSync)
                 verify(plaidApi).transactionsSync(any());
-                verify(plaidApi).accountsBalanceGet(any());
         }
 
         @Test
@@ -927,13 +922,7 @@ class PlaidServiceTest {
                 Call<TransactionsSyncResponse> syncCall = mock(Call.class);
                 when(syncCall.execute()).thenReturn(Response.success(syncBody));
 
-                AccountsGetResponse balanceBody = new AccountsGetResponse()
-                                .accounts(Collections.emptyList());
-                Call<AccountsGetResponse> balanceCall = mock(Call.class);
-                when(balanceCall.execute()).thenReturn(Response.success(balanceBody));
-
                 when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
-                when(plaidApi.accountsBalanceGet(any())).thenReturn(balanceCall);
 
                 // Bad item fails on decrypt
                 when(encryptionService.decrypt("encrypted-bad"))
@@ -945,5 +934,279 @@ class PlaidServiceTest {
                 assertEquals(1, result.itemsFailed());
                 assertTrue(result.message().contains("1 succeeded"));
                 assertTrue(result.message().contains("1 failed"));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_usesLaterOfAuthorizedAndPostedDate_authorizedAfter() throws IOException {
+                // Scenario: posted date is before link, but authorized date is on/after link.
+                // The transaction should be saved because we use the LATER of the two dates.
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                LocalDate linkedDate = LocalDate.of(2026, 3, 3);
+                // Posted date is March 2 (before link), but authorized date is March 3 (link
+                // day)
+                com.plaid.client.model.Transaction txn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-auth-date")
+                                .accountId("account-plaid-1")
+                                .amount(5.0)
+                                .name("Anthropic Charge")
+                                .date(linkedDate.minusDays(1))
+                                .authorizedDate(linkedDate)
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(txn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-auth");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CREDIT_CARD);
+                bankAccount.setPlaidAccountId("account-plaid-1");
+                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
+                                .thenReturn(Optional.of(bankAccount));
+
+                when(transactionRepository.findByPlaidTransactionId(anyString()))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Transaction should be saved because max(authorizedDate=March 3, date=March 2)
+                // = March 3 >= linkedDate (March 3)
+                ArgumentCaptor<com.budget.budgetai.model.Transaction> txnCaptor = ArgumentCaptor
+                                .forClass(com.budget.budgetai.model.Transaction.class);
+                verify(transactionRepository, times(1)).save(txnCaptor.capture());
+
+                com.budget.budgetai.model.Transaction saved = txnCaptor.getValue();
+                assertEquals("txn-auth-date", saved.getPlaidTransactionId());
+                assertEquals("Anthropic Charge", saved.getDescription());
+
+                verify(bankAccountService, times(1)).updateBalance(eq(bankAccount.getId()), any());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_usesLaterOfAuthorizedAndPostedDate_postedAfter() throws IOException {
+                // Scenario: authorized date is BEFORE link, but posted date is on/after link.
+                // The transaction should be saved because we use the LATER of the two dates.
+                // This matches the real Anthropic charge scenario: authorized March 2, posted
+                // March 3, linked March 3.
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                LocalDate linkedDate = LocalDate.of(2026, 3, 3);
+                // Authorized March 2 (before link), posted March 3 (link day)
+                com.plaid.client.model.Transaction txn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-posted-after")
+                                .accountId("account-plaid-1")
+                                .amount(5.0)
+                                .name("Anthropic API")
+                                .date(linkedDate) // posted March 3
+                                .authorizedDate(linkedDate.minusDays(1)) // authorized March 2
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(txn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-posted");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CREDIT_CARD);
+                bankAccount.setPlaidAccountId("account-plaid-1");
+                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
+                                .thenReturn(Optional.of(bankAccount));
+
+                when(transactionRepository.findByPlaidTransactionId(anyString()))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Transaction should be saved because max(authorizedDate=March 2, date=March 3)
+                // = March 3 >= linkedDate (March 3)
+                ArgumentCaptor<com.budget.budgetai.model.Transaction> txnCaptor = ArgumentCaptor
+                                .forClass(com.budget.budgetai.model.Transaction.class);
+                verify(transactionRepository, times(1)).save(txnCaptor.capture());
+
+                com.budget.budgetai.model.Transaction saved = txnCaptor.getValue();
+                assertEquals("txn-posted-after", saved.getPlaidTransactionId());
+                assertEquals("Anthropic API", saved.getDescription());
+
+                verify(bankAccountService, times(1)).updateBalance(eq(bankAccount.getId()), any());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void syncTransactions_fallsBackToDateWhenAuthorizedDateIsNull() throws IOException {
+                // Scenario: authorizedDate is null, so the filter should fall back to date.
+                // If the posted date is before the link date, the transaction should be
+                // skipped.
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(UUID.randomUUID());
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-id");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                LocalDate linkedDate = LocalDate.of(2026, 3, 3);
+                // No authorizedDate, posted date is before link
+                com.plaid.client.model.Transaction preLinkTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-no-auth-date")
+                                .accountId("account-plaid-1")
+                                .amount(25.0)
+                                .name("Old Charge No Auth Date")
+                                .date(linkedDate.minusDays(5))
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(preLinkTxn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("cursor-fallback");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CHECKING);
+                bankAccount.setPlaidAccountId("account-plaid-1");
+                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
+                                .thenReturn(Optional.of(bankAccount));
+
+                when(transactionRepository.findByPlaidTransactionId(anyString()))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.syncTransactions(plaidItem);
+
+                // Transaction should NOT be saved because date (Feb 26) < linkedDate (March 3)
+                // and authorizedDate is null so we fall back to date
+                verify(transactionRepository, never()).save(any(com.budget.budgetai.model.Transaction.class));
+                verify(bankAccountService, never()).updateBalance(any(), any());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void resyncFromScratch_resetsCursorAndSyncsWithoutBalanceAdjustment() throws IOException {
+                // Scenario: a transaction was missed due to the pre-link date filter.
+                // resyncFromScratch resets the cursor and re-syncs with adjustBalance=false.
+                UUID plaidItemId = UUID.randomUUID();
+                PlaidItem plaidItem = new PlaidItem();
+                plaidItem.setId(plaidItemId);
+                plaidItem.setAppUser(appUser);
+                plaidItem.setItemId("item-resync");
+                plaidItem.setAccessToken("encrypted-token");
+                plaidItem.setStatus(PlaidItemStatus.ACTIVE);
+                plaidItem.setTransactionCursor("old-cursor");
+
+                when(plaidItemRepository.findByIdAndAppUserId(plaidItemId, userId))
+                                .thenReturn(Optional.of(plaidItem));
+                when(encryptionService.decrypt("encrypted-token")).thenReturn("access-token");
+
+                LocalDate linkedDate = LocalDate.of(2026, 3, 3);
+
+                // An already-saved transaction (will be deduped)
+                com.plaid.client.model.Transaction existingTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-existing")
+                                .accountId("account-plaid-1")
+                                .amount(33.9)
+                                .name("Existing Purchase")
+                                .date(linkedDate)
+                                .authorizedDate(linkedDate)
+                                .pending(false);
+
+                // A missed transaction (authorizedDate on link day, should now be saved)
+                com.plaid.client.model.Transaction missedTxn = new com.plaid.client.model.Transaction()
+                                .transactionId("txn-missed")
+                                .accountId("account-plaid-1")
+                                .amount(5.0)
+                                .name("Anthropic Charge")
+                                .date(linkedDate.minusDays(1))
+                                .authorizedDate(linkedDate)
+                                .pending(false);
+
+                TransactionsSyncResponse syncBody = new TransactionsSyncResponse()
+                                .added(List.of(existingTxn, missedTxn))
+                                .modified(Collections.emptyList())
+                                .removed(Collections.emptyList())
+                                .hasMore(false)
+                                .nextCursor("new-cursor");
+
+                Call<TransactionsSyncResponse> syncCall = mock(Call.class);
+                when(syncCall.execute()).thenReturn(Response.success(syncBody));
+                when(plaidApi.transactionsSync(any())).thenReturn(syncCall);
+
+                BankAccount bankAccount = new BankAccount();
+                bankAccount.setId(UUID.randomUUID());
+                bankAccount.setAppUser(appUser);
+                bankAccount.setAccountType(AccountType.CREDIT_CARD);
+                bankAccount.setPlaidAccountId("account-plaid-1");
+                bankAccount.setPlaidLinkedAt(linkedDate.atStartOfDay(java.time.ZoneOffset.UTC));
+                when(bankAccountRepository.findByPlaidAccountIdAndPlaidItemId("account-plaid-1", plaidItem.getId()))
+                                .thenReturn(Optional.of(bankAccount));
+
+                // Existing txn is already in DB (dedup), missed txn is not
+                when(transactionRepository.findByPlaidTransactionId("txn-existing"))
+                                .thenReturn(Optional.of(new com.budget.budgetai.model.Transaction()));
+                when(transactionRepository.findByPlaidTransactionId("txn-missed"))
+                                .thenReturn(Optional.empty());
+                when(plaidItemRepository.save(any())).thenReturn(plaidItem);
+
+                plaidService.resyncFromScratch(userId, plaidItemId);
+
+                // Cursor should have been reset to null first
+                // Only the missed transaction should be saved (existing is deduped)
+                ArgumentCaptor<com.budget.budgetai.model.Transaction> txnCaptor = ArgumentCaptor
+                                .forClass(com.budget.budgetai.model.Transaction.class);
+                verify(transactionRepository, times(1)).save(txnCaptor.capture());
+
+                com.budget.budgetai.model.Transaction saved = txnCaptor.getValue();
+                assertEquals("txn-missed", saved.getPlaidTransactionId());
+                assertEquals("Anthropic Charge", saved.getDescription());
+
+                // Balance should NOT be adjusted (adjustBalance=false for resync)
+                verify(bankAccountService, never()).updateBalance(any(), any());
+
+                // Cursor should be updated to the new value
+                assertEquals("new-cursor", plaidItem.getTransactionCursor());
         }
 }
