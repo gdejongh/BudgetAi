@@ -6,5 +6,6 @@ spring:
     driver-class-name: org.postgresql.Driver
 
 plaid:
+  enabled: false
   sync:
     cron: 0 * * * * *

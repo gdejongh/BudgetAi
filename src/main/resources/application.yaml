@@ -36,6 +36,7 @@ cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
 
 plaid:
+  enabled: ${PLAID_ENABLED:false}
   client-id: ${PLAID_CLIENT_ID:}
   secret: ${PLAID_SECRET:}
   env: ${PLAID_ENV:sandbox}

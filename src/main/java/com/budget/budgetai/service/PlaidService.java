@@ -35,6 +35,7 @@ import com.plaid.client.request.PlaidApi;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import retrofit2.Response;
@@ -49,6 +50,7 @@ import java.util.stream.Collectors;
 
 @Service
 @Transactional
+@ConditionalOnProperty(name = "plaid.enabled", havingValue = "true")
 public class PlaidService {
 
     private static final Logger log = LoggerFactory.getLogger(PlaidService.class);

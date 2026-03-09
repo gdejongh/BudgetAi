@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping(value = "/api/plaid", produces = MediaType.APPLICATION_JSON_VALUE)
+@ConditionalOnProperty(name = "plaid.enabled", havingValue = "true")
 public class PlaidController {
 
     private final PlaidService plaidService;
