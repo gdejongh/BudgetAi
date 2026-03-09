@@ -265,6 +265,7 @@ public class TransactionService {
         transaction.setAmount(newAmount);
         transaction.setDescription(transactionDTO.getDescription());
         transaction.setTransactionDate(transactionDTO.getTransactionDate());
+        transaction.setMerchantName(transactionDTO.getMerchantName());
 
         return toDTO(transactionRepository.save(transaction));
     }
@@ -605,6 +606,7 @@ public class TransactionService {
         transaction.setAmount(transactionDTO.getAmount());
         transaction.setDescription(transactionDTO.getDescription());
         transaction.setTransactionDate(transactionDTO.getTransactionDate());
+        transaction.setMerchantName(transactionDTO.getMerchantName());
 
         if (transactionDTO.getTransactionType() != null) {
             transaction.setTransactionType(TransactionType.valueOf(transactionDTO.getTransactionType()));
