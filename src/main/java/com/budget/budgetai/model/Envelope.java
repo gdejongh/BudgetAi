@@ -52,6 +52,9 @@ public class Envelope {
     @Column(name = "goal_type", length = 20)
     private String goalType;
 
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 0;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

@@ -31,6 +31,9 @@ public class EnvelopeCategory {
     @OneToMany(mappedBy = "envelopeCategory", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Envelope> envelopes;
 
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 0;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

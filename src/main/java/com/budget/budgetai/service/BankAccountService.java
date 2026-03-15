@@ -113,6 +113,9 @@ public class BankAccountService {
         if (bankAccount.getAccountType() != AccountType.CREDIT_CARD) {
             bankAccount.setCurrentBalance(bankAccountDTO.getCurrentBalance());
         }
+        if (bankAccountDTO.getDisplayOrder() != null) {
+            bankAccount.setDisplayOrder(bankAccountDTO.getDisplayOrder());
+        }
         BankAccount updatedAccount = bankAccountRepository.save(bankAccount);
 
         // Keep the linked CC_PAYMENT envelope name in sync when the card name changes
@@ -249,6 +252,7 @@ public class BankAccountService {
             dto.setInstitutionName(bankAccount.getPlaidItem().getInstitutionName());
         }
         dto.setPlaidLinkedAt(bankAccount.getPlaidLinkedAt());
+        dto.setDisplayOrder(bankAccount.getDisplayOrder());
         return dto;
     }
 

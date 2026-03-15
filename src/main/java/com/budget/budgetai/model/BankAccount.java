@@ -48,6 +48,9 @@ public class BankAccount {
     @Column(name = "plaid_linked_at")
     private ZonedDateTime plaidLinkedAt;
 
+    @Column(name = "display_order", nullable = false)
+    private Integer displayOrder = 0;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 

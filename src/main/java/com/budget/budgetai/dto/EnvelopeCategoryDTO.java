@@ -20,6 +20,8 @@ public class EnvelopeCategoryDTO {
 
     private ZonedDateTime createdAt;
 
+    private Integer displayOrder;
+
     public EnvelopeCategoryDTO() {
     }
 
@@ -76,5 +78,13 @@ public class EnvelopeCategoryDTO {
 
     public void setCreatedAt(ZonedDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Integer getDisplayOrder() {
+        return displayOrder;
+    }
+
+    public void setDisplayOrder(Integer displayOrder) {
+        this.displayOrder = displayOrder;
     }
 }

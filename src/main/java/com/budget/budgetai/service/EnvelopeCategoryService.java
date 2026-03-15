@@ -89,6 +89,9 @@ public class EnvelopeCategoryService {
         }
 
         category.setName(dto.getName());
+        if (dto.getDisplayOrder() != null) {
+            category.setDisplayOrder(dto.getDisplayOrder());
+        }
         EnvelopeCategory updated = envelopeCategoryRepository.save(category);
         return toDTO(updated);
     }
@@ -125,12 +128,14 @@ public class EnvelopeCategoryService {
         if (category == null) {
             return null;
         }
-        return new EnvelopeCategoryDTO(
+        EnvelopeCategoryDTO dto = new EnvelopeCategoryDTO(
                 category.getId(),
                 category.getAppUser().getId(),
                 category.getName(),
                 category.getCategoryType() != null ? category.getCategoryType().name() : EnvelopeType.STANDARD.name(),
                 category.getCreatedAt());
+        dto.setDisplayOrder(category.getDisplayOrder());
+        return dto;
     }
 
     private EnvelopeCategory toEntity(EnvelopeCategoryDTO dto) {

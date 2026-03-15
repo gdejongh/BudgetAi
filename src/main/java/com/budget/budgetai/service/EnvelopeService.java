@@ -172,6 +172,9 @@ public class EnvelopeService {
         envelope.setMonthlyGoalTarget(envelopeDTO.getMonthlyGoalTarget());
         envelope.setGoalTargetDate(envelopeDTO.getGoalTargetDate());
         envelope.setGoalType(envelopeDTO.getGoalType());
+        if (envelopeDTO.getDisplayOrder() != null) {
+            envelope.setDisplayOrder(envelopeDTO.getDisplayOrder());
+        }
         Envelope updatedEnvelope = envelopeRepository.save(envelope);
         return toDTO(updatedEnvelope);
     }
@@ -205,7 +208,7 @@ public class EnvelopeService {
             return null;
         }
         BigDecimal totalAllocated = envelopeAllocationRepository.sumAllocationsByEnvelopeId(envelope.getId());
-        return new EnvelopeDTO(
+        EnvelopeDTO dto = new EnvelopeDTO(
                 envelope.getId(),
                 envelope.getAppUser().getId(),
                 envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
@@ -218,6 +221,8 @@ public class EnvelopeService {
                 envelope.getGoalTargetDate(),
                 envelope.getGoalType(),
                 envelope.getCreatedAt());
+        dto.setDisplayOrder(envelope.getDisplayOrder());
+        return dto;
     }
 
     /**
@@ -227,7 +232,7 @@ public class EnvelopeService {
         if (envelope == null) {
             return null;
         }
-        return new EnvelopeDTO(
+        EnvelopeDTO dto = new EnvelopeDTO(
                 envelope.getId(),
                 envelope.getAppUser().getId(),
                 envelope.getEnvelopeCategory() != null ? envelope.getEnvelopeCategory().getId() : null,
@@ -240,6 +245,8 @@ public class EnvelopeService {
                 envelope.getGoalTargetDate(),
                 envelope.getGoalType(),
                 envelope.getCreatedAt());
+        dto.setDisplayOrder(envelope.getDisplayOrder());
+        return dto;
     }
 
     private Envelope toEntity(EnvelopeDTO envelopeDTO) {

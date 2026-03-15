@@ -36,6 +36,8 @@ public class BankAccountDTO {
 
     private ZonedDateTime plaidLinkedAt;
 
+    private Integer displayOrder;
+
     public BankAccountDTO() {
     }
 
@@ -143,5 +145,13 @@ public class BankAccountDTO {
 
     public void setPlaidLinkedAt(ZonedDateTime plaidLinkedAt) {
         this.plaidLinkedAt = plaidLinkedAt;
+    }
+
+    public Integer getDisplayOrder() {
+        return displayOrder;
+    }
+
+    public void setDisplayOrder(Integer displayOrder) {
+        this.displayOrder = displayOrder;
     }
 }
